@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { format, startOfWeek, addDays, isSameDay, isToday } from "date-fns";
 import { ja } from "date-fns/locale";
-import { ArrowRight, Plus, Sparkles, Moon, Sun, Inbox, X } from "lucide-react";
+import { ArrowRight, Plus, Sparkles, Moon, Sun, Inbox, X, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { getMorningMessage } from "@/lib/pet/getPetMessage";
 import {
@@ -110,6 +110,11 @@ export default function HomePage() {
 
   function getRoleForId(roleId: string | null) {
     return roles.find(r => r.id === roleId) || null;
+  }
+
+  async function deleteTask(taskId: string) {
+    await supabase.from("tasks").delete().eq("id", taskId);
+    setTodayTasks((prev) => prev.filter((t) => t.id !== taskId));
   }
 
   async function addTask() {
@@ -631,23 +636,27 @@ export default function HomePage() {
                           >
                             {task.title}
                           </span>
-                          {!isDone && (
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              {task.estimated_minutes && (
-                                <span className="text-[10px] text-muted-foreground">
-                                  {task.estimated_minutes}分
-                                </span>
-                              )}
-                              {role && colors && (
-                                <span
-                                  className="text-[9px] px-1.5 py-0.5 rounded-full"
-                                  style={{ backgroundColor: colors.bg, color: colors.text }}
-                                >
-                                  {ROLE_EMOJI[role.category]}
-                                </span>
-                              )}
-                            </div>
-                          )}
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {!isDone && task.estimated_minutes && (
+                              <span className="text-[10px] text-muted-foreground">
+                                {task.estimated_minutes}分
+                              </span>
+                            )}
+                            {!isDone && role && colors && (
+                              <span
+                                className="text-[9px] px-1.5 py-0.5 rounded-full"
+                                style={{ backgroundColor: colors.bg, color: colors.text }}
+                              >
+                                {ROLE_EMOJI[role.category]}
+                              </span>
+                            )}
+                            <button
+                              onClick={() => deleteTask(task.id)}
+                              className="p-1 rounded-lg transition-colors active:bg-red-50"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-muted-foreground/40 active:text-red-400" />
+                            </button>
+                          </div>
                         </motion.div>
                       );
                     })}
