@@ -167,12 +167,7 @@ export function ProjectTimeline({
                     }`}
                   >
                     <button
-                      onClick={() =>
-                        onToggleStatus?.(
-                          task.id,
-                          task.status === "done" ? "todo" : "done"
-                        )
-                      }
+                      onClick={() => onToggleStatus?.(task.id, task.status)}
                       className="mt-0.5 shrink-0"
                     >
                       {task.status === "done" ? (

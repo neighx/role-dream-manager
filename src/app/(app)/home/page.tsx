@@ -10,7 +10,7 @@ import { ArrowRight, Plus, Sparkles, Moon, Sun, Inbox, X, Trash2 } from "lucide-
 import { createClient } from "@/lib/supabase/client";
 import { getMorningMessage } from "@/lib/pet/getPetMessage";
 import {
-  UserProfile, Role, DailyCheckin, Task, Schedule,
+  UserProfile, Role, DailyCheckin, Task, Schedule, ProjectTask,
   PetType, EnergyLevel, DayMode, ROLE_CATEGORY_COLORS, MODE_LABELS, TaskStatus,
 } from "@/types";
 
@@ -49,6 +49,7 @@ export default function HomePage() {
   const [checkin, setCheckin] = useState<DailyCheckin | null>(null);
   const [weekSchedules, setWeekSchedules] = useState<Schedule[]>([]);
   const [todayTasks, setTodayTasks] = useState<Task[]>([]);
+  const [todayProjectTasks, setTodayProjectTasks] = useState<ProjectTask[]>([]);
   const [petMessage, setPetMessage] = useState("");
   const [inboxCount, setInboxCount] = useState(0);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -71,7 +72,7 @@ export default function HomePage() {
       const weekStartStr = format(weekStart, "yyyy-MM-dd");
       const weekEndStr = format(addDays(weekStart, 6), "yyyy-MM-dd");
 
-      const [{ data: p }, { data: r }, { data: c }, { data: s }, { data: t }, { count: ic }] = await Promise.all([
+      const [{ data: p }, { data: r }, { data: c }, { data: s }, { data: t }, { count: ic }, { data: pt }] = await Promise.all([
         supabase.from("users_profile").select("name,selected_pet,life_vision").eq("user_id", user.id).single(),
         supabase.from("roles").select("id,title,category,dream,gap,monthly_goal,vision_photo_url,values,progress").eq("user_id", user.id).order("display_order").limit(6),
         supabase.from("daily_checkins").select("*").eq("user_id", user.id)
@@ -87,6 +88,11 @@ export default function HomePage() {
           .limit(30),
         supabase.from("inbox_items").select("*", { count: "exact", head: true })
           .eq("user_id", user.id).eq("status", "open"),
+        supabase.from("project_tasks").select("*")
+          .eq("user_id", user.id)
+          .eq("due_date", todayStr)
+          .neq("status", "skipped")
+          .order("quadrant"),
       ]);
 
       setProfile(p as unknown as UserProfile);
@@ -94,6 +100,7 @@ export default function HomePage() {
       setCheckin(c);
       setWeekSchedules((s || []) as unknown as Schedule[]);
       setTodayTasks(t || []);
+      setTodayProjectTasks((pt || []) as ProjectTask[]);
       setInboxCount(ic ?? 0);
 
       const pet = (p?.selected_pet || "cat") as PetType;
@@ -110,6 +117,21 @@ export default function HomePage() {
 
   function getRoleForId(roleId: string | null) {
     return roles.find(r => r.id === roleId) || null;
+  }
+
+  async function toggleProjectTaskDone(taskId: string) {
+    const task = todayProjectTasks.find((t) => t.id === taskId);
+    if (!task) return;
+    const newStatus = task.status === "done" ? "todo" : "done";
+    await supabase.from("project_tasks").update({ status: newStatus }).eq("id", taskId);
+    setTodayProjectTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, status: newStatus as ProjectTask["status"] } : t))
+    );
+  }
+
+  async function deleteProjectTask(taskId: string) {
+    await supabase.from("project_tasks").delete().eq("id", taskId);
+    setTodayProjectTasks((prev) => prev.filter((t) => t.id !== taskId));
   }
 
   async function deleteTask(taskId: string) {
@@ -572,7 +594,7 @@ export default function HomePage() {
           )}
         </AnimatePresence>
 
-        {todayTasks.length === 0 ? (
+        {todayTasks.length === 0 && todayProjectTasks.length === 0 ? (
           <Link href={checkin ? "/today" : "/checkin"}>
             <div className="bg-white rounded-3xl p-6 text-center shadow-sm active:scale-[0.98] transition-transform">
               <p className="text-3xl mb-2">📋</p>
@@ -595,7 +617,8 @@ export default function HomePage() {
               { q: 3, label: "緊急・重要でない", color: "#BDD5EA" },
             ] as const).map(({ q, label, color }) => {
               const qTasks = todayTasks.filter((t) => t.quadrant === q);
-              if (qTasks.length === 0) return null;
+              const qPTasks = todayProjectTasks.filter((t) => (t.quadrant ?? 1) === q);
+              if (qTasks.length === 0 && qPTasks.length === 0) return null;
               return (
                 <div key={q}>
                   <div className="flex items-center gap-1.5 mb-2">
@@ -607,6 +630,7 @@ export default function HomePage() {
                     </span>
                   </div>
                   <div className="bg-white rounded-2xl overflow-hidden shadow-sm">
+                    {/* 通常タスク */}
                     {qTasks.slice(0, 5).map((task) => {
                       const role = getRoleForId(task.role_id);
                       const colors = role ? ROLE_CATEGORY_COLORS[role.category] : null;
@@ -629,9 +653,7 @@ export default function HomePage() {
                           </button>
                           <span
                             className={`text-sm flex-1 truncate transition-colors ${
-                              isDone
-                                ? "line-through text-muted-foreground/60"
-                                : "text-charcoal"
+                              isDone ? "line-through text-muted-foreground/60" : "text-charcoal"
                             }`}
                           >
                             {task.title}
@@ -654,7 +676,52 @@ export default function HomePage() {
                               onClick={() => deleteTask(task.id)}
                               className="p-1 rounded-lg transition-colors active:bg-red-50"
                             >
-                              <Trash2 className="w-3.5 h-3.5 text-muted-foreground/40 active:text-red-400" />
+                              <Trash2 className="w-3.5 h-3.5 text-muted-foreground/40" />
+                            </button>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                    {/* プロジェクトタスク */}
+                    {qPTasks.map((task) => {
+                      const role = getRoleForId(task.role_id);
+                      const colors = role ? ROLE_CATEGORY_COLORS[role.category] : null;
+                      const isDone = task.status === "done";
+                      return (
+                        <motion.div
+                          key={`pt-${task.id}`}
+                          layout
+                          className="flex items-center gap-3 px-4 py-3.5 border-b border-mist last:border-0"
+                        >
+                          <button
+                            onClick={() => toggleProjectTaskDone(task.id)}
+                            className="shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all"
+                            style={{
+                              borderColor: isDone ? "#9DBF98" : colors?.border || "#D8D5CC",
+                              backgroundColor: isDone ? "#9DBF98" : "transparent",
+                            }}
+                          >
+                            {isDone && <span className="text-white text-[9px] font-bold">✓</span>}
+                          </button>
+                          <span
+                            className={`text-sm flex-1 truncate transition-colors ${
+                              isDone ? "line-through text-muted-foreground/60" : "text-charcoal"
+                            }`}
+                          >
+                            <span className="mr-1 text-[11px]">🎯</span>
+                            {task.title}
+                          </span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {!isDone && task.estimated_minutes && (
+                              <span className="text-[10px] text-muted-foreground">
+                                {task.estimated_minutes}分
+                              </span>
+                            )}
+                            <button
+                              onClick={() => deleteProjectTask(task.id)}
+                              className="p-1 rounded-lg transition-colors active:bg-red-50"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-muted-foreground/40" />
                             </button>
                           </div>
                         </motion.div>
@@ -664,9 +731,11 @@ export default function HomePage() {
                 </div>
               );
             })}
-            {todayTasks.filter((t) => t.status === "done").length > 0 && (
+            {(todayTasks.filter((t) => t.status === "done").length +
+              todayProjectTasks.filter((t) => t.status === "done").length) > 0 && (
               <p className="text-[11px] text-center text-muted-foreground pt-1">
-                ✓ {todayTasks.filter((t) => t.status === "done").length}件完了 — タップで元に戻せます
+                ✓ {todayTasks.filter((t) => t.status === "done").length +
+                    todayProjectTasks.filter((t) => t.status === "done").length}件完了 — タップで元に戻せます
               </p>
             )}
           </div>

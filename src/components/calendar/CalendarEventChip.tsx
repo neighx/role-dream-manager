@@ -17,7 +17,10 @@ export function CalendarEventChip({ event, compact = false, onClick, onSelectEve
   };
   const bg = getRoleColor(event.roleCategory, event.color);
   const textColor = getRoleTextColor(event.roleCategory);
-  const isDone = event.type === "task" && (event.sourceData as any).status === "done";
+  const isDone =
+    (event.type === "task" || event.type === "project_task") &&
+    (event.sourceData as any).status === "done";
+  const isProjectTask = event.type === "project_task";
 
   if (compact) {
     return (
@@ -47,6 +50,7 @@ export function CalendarEventChip({ event, compact = false, onClick, onSelectEve
           className="text-xs font-medium truncate"
           style={{ color: textColor, textDecoration: isDone ? "line-through" : "none" }}
         >
+          {isProjectTask && <span className="mr-1">🎯</span>}
           {event.title}
         </p>
         {event.type === "schedule" && !event.isAllDay && (

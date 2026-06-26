@@ -16,7 +16,7 @@ import { ScheduleFormModal } from "@/components/calendar/ScheduleFormModal";
 import { ScheduleEditModal } from "@/components/calendar/ScheduleEditModal";
 import { CalendarEventChip } from "@/components/calendar/CalendarEventChip";
 import {
-  CalendarViewMode, CalendarEvent, Schedule, Task,
+  CalendarViewMode, CalendarEvent, Schedule, Task, ProjectTask,
   Role, UserProfile, PetType, ROLE_CATEGORY_COLORS,
 } from "@/types";
 import { navigateDate, getViewLabel, getEventsForDay } from "@/lib/calendar/calendarUtils";
@@ -52,12 +52,13 @@ function CalendarContent() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const [{ data: r }, { data: s }, { data: t }, { data: p }] = await Promise.all([
+    const [{ data: r }, { data: s }, { data: t }, { data: p }, { data: pt }] = await Promise.all([
       supabase.from("roles").select("*").eq("user_id", user.id),
       supabase.from("schedules").select("*").eq("user_id", user.id),
       supabase.from("tasks").select("*, roles(category)").eq("user_id", user.id)
         .not("scheduled_at", "is", null),
       supabase.from("users_profile").select("*").eq("user_id", user.id).single(),
+      supabase.from("project_tasks").select("*").eq("user_id", user.id).not("due_date", "is", null),
     ]);
 
     setRoles(r || []);
@@ -100,7 +101,22 @@ function CalendarContent() {
       };
     });
 
-    setEvents([...scheduleEvents, ...taskEvents]);
+    const projectTaskEvents: CalendarEvent[] = (pt || []).map((item: ProjectTask) => {
+      const role = item.role_id ? roleMap.get(item.role_id) : undefined;
+      return {
+        id: `project-task-${item.id}`,
+        type: "project_task" as const,
+        title: item.title,
+        start: new Date(item.due_date + "T00:00:00"),
+        isAllDay: true,
+        roleId: item.role_id || undefined,
+        roleCategory: role?.category,
+        color: "#F5CCC8",
+        sourceData: item,
+      };
+    });
+
+    setEvents([...scheduleEvents, ...taskEvents, ...projectTaskEvents]);
   }
 
   async function loadTaskForModal(taskId: string) {

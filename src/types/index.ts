@@ -380,7 +380,7 @@ export type CalendarViewMode = "month" | "week" | "day" | "today";
 
 export interface CalendarEvent {
   id: string;
-  type: "schedule" | "task";
+  type: "schedule" | "task" | "project_task";
   title: string;
   start: Date;
   end?: Date;
@@ -388,7 +388,7 @@ export interface CalendarEvent {
   roleId?: string;
   roleCategory?: RoleCategory;
   color?: string;
-  sourceData: Schedule | Task;
+  sourceData: Schedule | Task | ProjectTask;
 }
 
 // ─── オンボーディングのフォームデータ ────────────────────────
