@@ -1,26 +1,162 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-sans);
   --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* Role Dream Manager カスタムカラー */
+  --color-ivory: #F6F5F1;
+  --color-sage: #8FA888;
+  --color-sage-light: #C8DBC6;
+  --color-sage-dark: #6B8B64;
+  --color-sand: #D9C9B0;
+  --color-blush: #EDD5CC;
+  --color-sky: #BDD5EA;
+  --color-charcoal: #2D2D2D;
+  --color-mist: #E8E6E0;
+  --color-lavender: #D8CDE8;
+
+  /* Role カテゴリカラー */
+  --color-role-creator: #BDD5EA;
+  --color-role-health: #C8DBC6;
+  --color-role-work: #DCDCDA;
+  --color-role-relationship: #EDD5CC;
+  --color-role-learning: #D8CDE8;
+  --color-role-selfcare: #E8DDD0;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+:root {
+  --background: #F6F5F1;
+  --foreground: #2D2D2D;
+  --card: #FFFFFF;
+  --card-foreground: #2D2D2D;
+  --popover: #FFFFFF;
+  --popover-foreground: #2D2D2D;
+  --primary: #8FA888;
+  --primary-foreground: #FFFFFF;
+  --secondary: #E8E6E0;
+  --secondary-foreground: #2D2D2D;
+  --muted: #F0EEE9;
+  --muted-foreground: #888680;
+  --accent: #D9C9B0;
+  --accent-foreground: #2D2D2D;
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: #E4E2DC;
+  --input: #E4E2DC;
+  --ring: #8FA888;
+  --chart-1: #BDD5EA;
+  --chart-2: #C8DBC6;
+  --chart-3: #D8CDE8;
+  --chart-4: #EDD5CC;
+  --chart-5: #E8DDD0;
+  --radius: 1rem;
+  --sidebar: #F6F5F1;
+  --sidebar-foreground: #2D2D2D;
+  --sidebar-primary: #8FA888;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #E8E6E0;
+  --sidebar-accent-foreground: #2D2D2D;
+  --sidebar-border: #E4E2DC;
+  --sidebar-ring: #8FA888;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "palt";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  html {
+    @apply font-sans;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer utilities {
+  .bg-ivory { background-color: #F6F5F1; }
+  .bg-sage { background-color: #8FA888; }
+  .bg-sage-light { background-color: #C8DBC6; }
+  .bg-sand { background-color: #D9C9B0; }
+  .bg-blush { background-color: #EDD5CC; }
+  .bg-sky-soft { background-color: #BDD5EA; }
+  .bg-mist { background-color: #E8E6E0; }
+  .bg-lavender { background-color: #D8CDE8; }
+
+  .text-sage { color: #8FA888; }
+  .text-charcoal { color: #2D2D2D; }
+  .text-sand { color: #D9C9B0; }
+
+  .border-sage { border-color: #8FA888; }
+  .ring-sage { --tw-ring-color: #8FA888; }
+
+  /* Role category colors */
+  .role-creator { background-color: #BDD5EA; color: #2A5F8F; }
+  .role-health { background-color: #C8DBC6; color: #3A6B36; }
+  .role-work { background-color: #DCDCDA; color: #555553; }
+  .role-relationship { background-color: #EDD5CC; color: #9B5A4E; }
+  .role-learning { background-color: #D8CDE8; color: #6B4E9B; }
+  .role-selfcare { background-color: #E8DDD0; color: #8B6E4E; }
+
+  /* スクロールバー非表示 */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* 安全エリア対応 */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
 }
