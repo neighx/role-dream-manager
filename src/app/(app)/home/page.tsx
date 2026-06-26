@@ -496,9 +496,7 @@ export default function HomePage() {
               { q: 2, label: "重要・急がない", color: "#C8DBC6" },
               { q: 3, label: "緊急・重要でない", color: "#BDD5EA" },
             ] as const).map(({ q, label, color }) => {
-              const qTasks = todayTasks.filter(
-                (t) => t.quadrant === q && t.status !== "done"
-              );
+              const qTasks = todayTasks.filter((t) => t.quadrant === q);
               if (qTasks.length === 0) return null;
               return (
                 <div key={q}>
@@ -514,6 +512,7 @@ export default function HomePage() {
                     {qTasks.slice(0, 5).map((task) => {
                       const role = getRoleForId(task.role_id);
                       const colors = role ? ROLE_CATEGORY_COLORS[role.category] : null;
+                      const isDone = task.status === "done";
                       return (
                         <motion.div
                           key={task.id}
@@ -523,26 +522,39 @@ export default function HomePage() {
                           <button
                             onClick={() => toggleDone(task.id)}
                             className="shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all"
-                            style={{ borderColor: colors?.border || "#D8D5CC" }}
-                          />
-                          <span className="text-sm text-charcoal flex-1 truncate">
+                            style={{
+                              borderColor: isDone ? "#9DBF98" : colors?.border || "#D8D5CC",
+                              backgroundColor: isDone ? "#9DBF98" : "transparent",
+                            }}
+                          >
+                            {isDone && <span className="text-white text-[9px] font-bold">✓</span>}
+                          </button>
+                          <span
+                            className={`text-sm flex-1 truncate transition-colors ${
+                              isDone
+                                ? "line-through text-muted-foreground/60"
+                                : "text-charcoal"
+                            }`}
+                          >
                             {task.title}
                           </span>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            {task.estimated_minutes && (
-                              <span className="text-[10px] text-muted-foreground">
-                                {task.estimated_minutes}分
-                              </span>
-                            )}
-                            {role && colors && (
-                              <span
-                                className="text-[9px] px-1.5 py-0.5 rounded-full"
-                                style={{ backgroundColor: colors.bg, color: colors.text }}
-                              >
-                                {ROLE_EMOJI[role.category]}
-                              </span>
-                            )}
-                          </div>
+                          {!isDone && (
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {task.estimated_minutes && (
+                                <span className="text-[10px] text-muted-foreground">
+                                  {task.estimated_minutes}分
+                                </span>
+                              )}
+                              {role && colors && (
+                                <span
+                                  className="text-[9px] px-1.5 py-0.5 rounded-full"
+                                  style={{ backgroundColor: colors.bg, color: colors.text }}
+                                >
+                                  {ROLE_EMOJI[role.category]}
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </motion.div>
                       );
                     })}
@@ -552,7 +564,7 @@ export default function HomePage() {
             })}
             {todayTasks.filter((t) => t.status === "done").length > 0 && (
               <p className="text-[11px] text-center text-muted-foreground pt-1">
-                ✓ {todayTasks.filter((t) => t.status === "done").length}件完了
+                ✓ {todayTasks.filter((t) => t.status === "done").length}件完了 — タップで元に戻せます
               </p>
             )}
           </div>
