@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { format, startOfWeek, addDays, isSameDay, isToday } from "date-fns";
 import { ja } from "date-fns/locale";
-import { ArrowRight, Plus, Sparkles, Moon, Sun, Inbox } from "lucide-react";
+import { ArrowRight, Plus, Sparkles, Moon, Sun, Inbox, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { getMorningMessage } from "@/lib/pet/getPetMessage";
 import {
@@ -51,6 +51,10 @@ export default function HomePage() {
   const [todayTasks, setTodayTasks] = useState<Task[]>([]);
   const [petMessage, setPetMessage] = useState("");
   const [inboxCount, setInboxCount] = useState(0);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [newQuadrant, setNewQuadrant] = useState<1 | 2 | 3>(1);
+  const [isAdding, setIsAdding] = useState(false);
 
   const today = new Date();
   const hour = today.getHours();
@@ -106,6 +110,26 @@ export default function HomePage() {
 
   function getRoleForId(roleId: string | null) {
     return roles.find(r => r.id === roleId) || null;
+  }
+
+  async function addTask() {
+    if (!newTitle.trim()) return;
+    setIsAdding(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const todayStr = format(today, "yyyy-MM-dd");
+    const { data: inserted } = await supabase.from("tasks").insert({
+      user_id: user.id,
+      title: newTitle.trim(),
+      quadrant: newQuadrant,
+      due_date: todayStr,
+      status: "todo",
+    }).select().single();
+    if (inserted) setTodayTasks((prev) => [...prev, inserted as Task]);
+    setNewTitle("");
+    setNewQuadrant(1);
+    setShowAddForm(false);
+    setIsAdding(false);
   }
 
   async function toggleDone(taskId: string) {
@@ -468,11 +492,80 @@ export default function HomePage() {
       >
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-[13px] font-medium text-charcoal">今日のTODO</h2>
-          <Link href="/today" className="flex items-center gap-1 text-[11px] text-sage">
-            <Sparkles className="w-3 h-3" />
-            {todayTasks.length > 0 ? "プランを更新" : "プランを生成"}
-          </Link>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowAddForm((v) => !v)}
+              className="flex items-center gap-0.5 text-[11px] text-sage"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              追加
+            </button>
+            <Link href="/today" className="flex items-center gap-1 text-[11px] text-muted-foreground">
+              <Sparkles className="w-3 h-3" />
+              {todayTasks.length > 0 ? "AI更新" : "AI生成"}
+            </Link>
+          </div>
         </div>
+
+        {/* 手動追加フォーム */}
+        <AnimatePresence>
+          {showAddForm && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="overflow-hidden mb-3"
+            >
+              <div className="bg-white rounded-2xl p-4 shadow-sm space-y-3">
+                <input
+                  type="text"
+                  value={newTitle}
+                  onChange={(e) => setNewTitle(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && addTask()}
+                  placeholder="タスクを入力…"
+                  autoFocus
+                  className="w-full px-3 py-2.5 text-sm rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-sage/30"
+                />
+                {/* 重要度選択 */}
+                <div className="flex gap-2">
+                  {([
+                    { q: 1, label: "重要・緊急", color: "#F5CCC8" },
+                    { q: 2, label: "重要", color: "#C8DBC6" },
+                    { q: 3, label: "緊急", color: "#BDD5EA" },
+                  ] as const).map(({ q, label, color }) => (
+                    <button
+                      key={q}
+                      onClick={() => setNewQuadrant(q)}
+                      className="flex-1 py-1.5 rounded-xl text-[10px] font-medium transition-all border"
+                      style={{
+                        backgroundColor: newQuadrant === q ? color : "transparent",
+                        borderColor: newQuadrant === q ? color : "#E0DDD8",
+                        color: newQuadrant === q ? "#444" : "#999",
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={addTask}
+                    disabled={!newTitle.trim() || isAdding}
+                    className="flex-1 py-2 rounded-xl bg-sage text-white text-sm font-medium disabled:opacity-40"
+                  >
+                    追加
+                  </button>
+                  <button
+                    onClick={() => { setShowAddForm(false); setNewTitle(""); }}
+                    className="w-10 py-2 rounded-xl border border-border flex items-center justify-center"
+                  >
+                    <X className="w-4 h-4 text-muted-foreground" />
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {todayTasks.length === 0 ? (
           <Link href={checkin ? "/today" : "/checkin"}>
