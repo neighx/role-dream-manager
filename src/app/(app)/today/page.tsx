@@ -65,6 +65,8 @@ export default function TodayPage() {
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const [phase, setPhase] = useState<"select" | "plan">("select");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isSaved, setIsSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const today = new Date();
 
@@ -84,6 +86,16 @@ export default function TodayPage() {
       setRoles(r || []);
       setProfile(p);
       if (c?.selected_role_ids?.length) setSelectedRoleIds(c.selected_role_ids);
+
+      // 今日すでに保存済みか確認
+      if (user) {
+        const { count } = await supabase
+          .from("tasks")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", user.id)
+          .eq("due_date", format(today, "yyyy-MM-dd"));
+        if ((count ?? 0) > 0) setIsSaved(true);
+      }
     }
     load();
   }, []);
@@ -133,6 +145,31 @@ export default function TodayPage() {
       setIsGenerating(false);
       setGeneratingMode(null);
     }
+  }
+
+  async function savePlan() {
+    if (!planResult || !checkin) return;
+    setIsSaving(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const todayStr = format(today, "yyyy-MM-dd");
+    const tasksToSave = planResult.tasks
+      .filter((t) => t.quadrant !== 4)
+      .map((t) => ({
+        user_id: user.id,
+        role_id: t.role_id,
+        title: t.title,
+        purpose: t.long_term_connection || null,
+        due_date: todayStr,
+        estimated_minutes: t.estimated_minutes || null,
+        quadrant: t.quadrant,
+        status: "todo" as const,
+      }));
+
+    await supabase.from("tasks").insert(tasksToSave);
+    setIsSaved(true);
+    setIsSaving(false);
   }
 
   function toggleTask(taskId: string) {
@@ -339,6 +376,39 @@ export default function TodayPage() {
             animate={{ opacity: 1 }}
             className="space-y-4"
           >
+            {/* 保存バナー */}
+            {isSaved ? (
+              <motion.div
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-sage/10 rounded-2xl px-4 py-3 flex items-center justify-between border border-sage/20"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-sage text-base">✓</span>
+                  <span className="text-sm text-sage font-medium">TODOに保存しました</span>
+                </div>
+                <Link href="/home" className="text-xs text-sage font-medium">
+                  ホームで確認 →
+                </Link>
+              </motion.div>
+            ) : (
+              <motion.button
+                onClick={savePlan}
+                disabled={isSaving}
+                whileTap={{ scale: 0.97 }}
+                className="w-full py-4 rounded-2xl bg-sage text-white font-medium text-sm flex items-center justify-center gap-2 disabled:opacity-50 shadow-sm"
+              >
+                {isSaving ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    保存中...
+                  </>
+                ) : (
+                  <>📋 今日のTODOに保存する</>
+                )}
+              </motion.button>
+            )}
+
             {/* Overall Message + Pet */}
             <motion.div
               initial={{ opacity: 0, y: 8 }}

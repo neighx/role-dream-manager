@@ -11,7 +11,7 @@ import { createClient } from "@/lib/supabase/client";
 import { getMorningMessage } from "@/lib/pet/getPetMessage";
 import {
   UserProfile, Role, DailyCheckin, Task, Schedule,
-  PetType, EnergyLevel, DayMode, ROLE_CATEGORY_COLORS, MODE_LABELS,
+  PetType, EnergyLevel, DayMode, ROLE_CATEGORY_COLORS, MODE_LABELS, TaskStatus,
 } from "@/types";
 
 // ─── 定数 ──────────────────────────────────────────────────────
@@ -48,9 +48,8 @@ export default function HomePage() {
   const [roles, setRoles] = useState<Role[]>([]);
   const [checkin, setCheckin] = useState<DailyCheckin | null>(null);
   const [weekSchedules, setWeekSchedules] = useState<Schedule[]>([]);
-  const [urgentTasks, setUrgentTasks] = useState<Task[]>([]);
+  const [todayTasks, setTodayTasks] = useState<Task[]>([]);
   const [petMessage, setPetMessage] = useState("");
-  const [doneTasks, setDoneTasks] = useState<Set<string>>(new Set());
   const [inboxCount, setInboxCount] = useState(0);
 
   const today = new Date();
@@ -79,10 +78,9 @@ export default function HomePage() {
           .lte("start_time", `${weekEndStr}T23:59:59`),
         supabase.from("tasks").select("*")
           .eq("user_id", user.id)
-          .eq("quadrant", 1)
-          .neq("status", "done")
-          .order("created_at", { ascending: false })
-          .limit(5),
+          .eq("due_date", todayStr)
+          .order("quadrant")
+          .limit(30),
         supabase.from("inbox_items").select("*", { count: "exact", head: true })
           .eq("user_id", user.id).eq("status", "open"),
       ]);
@@ -91,7 +89,7 @@ export default function HomePage() {
       setRoles((r || []) as unknown as Role[]);
       setCheckin(c);
       setWeekSchedules((s || []) as unknown as Schedule[]);
-      setUrgentTasks(t || []);
+      setTodayTasks(t || []);
       setInboxCount(ic ?? 0);
 
       const pet = (p?.selected_pet || "cat") as PetType;
@@ -110,12 +108,14 @@ export default function HomePage() {
     return roles.find(r => r.id === roleId) || null;
   }
 
-  function toggleDone(taskId: string) {
-    setDoneTasks(prev => {
-      const next = new Set(prev);
-      next.has(taskId) ? next.delete(taskId) : next.add(taskId);
-      return next;
-    });
+  async function toggleDone(taskId: string) {
+    const task = todayTasks.find((t) => t.id === taskId);
+    if (!task) return;
+    const newStatus: TaskStatus = task.status === "done" ? "todo" : "done";
+    await supabase.from("tasks").update({ status: newStatus }).eq("id", taskId);
+    setTodayTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t))
+    );
   }
 
   const petType = (profile?.selected_pet || "cat") as PetType;
@@ -460,78 +460,104 @@ export default function HomePage() {
         </div>
       </motion.div>
 
-      {/* ⑤ 重要・緊急タスク */}
-      {urgentTasks.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25 }}
-        >
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-[13px] font-medium text-charcoal">
-              重要・緊急タスク
-              <span className="ml-1.5 text-[10px] text-rose-400 font-normal">優先度 最高</span>
-            </h2>
-            <Link href="/today" className="flex items-center gap-0.5 text-[11px] text-sage">
-              すべて <ArrowRight className="w-3 h-3" />
-            </Link>
-          </div>
+      {/* ⑤ 今日のTODO */}
+      <motion.div
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.25 }}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-[13px] font-medium text-charcoal">今日のTODO</h2>
+          <Link href="/today" className="flex items-center gap-1 text-[11px] text-sage">
+            <Sparkles className="w-3 h-3" />
+            {todayTasks.length > 0 ? "プランを更新" : "プランを生成"}
+          </Link>
+        </div>
 
-          <div className="bg-white rounded-3xl overflow-hidden shadow-sm">
-            {urgentTasks.slice(0, 4).map((task, i) => {
-              const role = getRoleForId(task.role_id);
-              const colors = role ? ROLE_CATEGORY_COLORS[role.category] : null;
-              const isDone = doneTasks.has(task.id);
-
+        {todayTasks.length === 0 ? (
+          <Link href={checkin ? "/today" : "/checkin"}>
+            <div className="bg-white rounded-3xl p-6 text-center shadow-sm active:scale-[0.98] transition-transform">
+              <p className="text-3xl mb-2">📋</p>
+              <p className="text-sm font-medium text-charcoal">まだ今日のTODOがありません</p>
+              <p className="text-[11px] text-muted-foreground mt-1 mb-3 leading-relaxed">
+                {checkin
+                  ? "AIで今日のプランを作って保存しよう"
+                  : "まずチェックインして気分を教えよう"}
+              </p>
+              <span className="text-[11px] text-sage">
+                {checkin ? "プランを生成する →" : "チェックインする →"}
+              </span>
+            </div>
+          </Link>
+        ) : (
+          <div className="space-y-3">
+            {([
+              { q: 1, label: "重要・緊急", color: "#F5CCC8" },
+              { q: 2, label: "重要・急がない", color: "#C8DBC6" },
+              { q: 3, label: "緊急・重要でない", color: "#BDD5EA" },
+            ] as const).map(({ q, label, color }) => {
+              const qTasks = todayTasks.filter(
+                (t) => t.quadrant === q && t.status !== "done"
+              );
+              if (qTasks.length === 0) return null;
               return (
-                <motion.div
-                  key={task.id}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.26 + i * 0.05 }}
-                  className="flex items-center gap-3 px-4 py-3.5 border-b border-mist last:border-0"
-                >
-                  {/* チェックボタン */}
-                  <button
-                    onClick={() => toggleDone(task.id)}
-                    className="shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all"
-                    style={{
-                      borderColor: isDone ? (colors?.border || "#C8C5BC") : "#D8D5CC",
-                      backgroundColor: isDone ? (colors?.border || "#C8C5BC") : "transparent",
-                    }}
-                  >
-                    {isDone && <span className="text-white text-[8px]">✓</span>}
-                  </button>
-
-                  <span
-                    className={`text-sm text-charcoal flex-1 truncate transition-all ${
-                      isDone ? "line-through text-muted-foreground" : ""
-                    }`}
-                  >
-                    {task.title}
-                  </span>
-
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    {task.estimated_minutes && !isDone && (
-                      <span className="text-[10px] text-muted-foreground">
-                        {task.estimated_minutes}分
-                      </span>
-                    )}
-                    {role && colors && (
-                      <span
-                        className="text-[9px] px-2 py-0.5 rounded-full"
-                        style={{ backgroundColor: colors.bg, color: colors.text }}
-                      >
-                        {ROLE_EMOJI[role.category]} {role.title}
-                      </span>
-                    )}
+                <div key={q}>
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <span
+                      className="text-[10px] px-2.5 py-0.5 rounded-full font-medium"
+                      style={{ backgroundColor: color, color: "#444" }}
+                    >
+                      {label}
+                    </span>
                   </div>
-                </motion.div>
+                  <div className="bg-white rounded-2xl overflow-hidden shadow-sm">
+                    {qTasks.slice(0, 5).map((task) => {
+                      const role = getRoleForId(task.role_id);
+                      const colors = role ? ROLE_CATEGORY_COLORS[role.category] : null;
+                      return (
+                        <motion.div
+                          key={task.id}
+                          layout
+                          className="flex items-center gap-3 px-4 py-3.5 border-b border-mist last:border-0"
+                        >
+                          <button
+                            onClick={() => toggleDone(task.id)}
+                            className="shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all"
+                            style={{ borderColor: colors?.border || "#D8D5CC" }}
+                          />
+                          <span className="text-sm text-charcoal flex-1 truncate">
+                            {task.title}
+                          </span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {task.estimated_minutes && (
+                              <span className="text-[10px] text-muted-foreground">
+                                {task.estimated_minutes}分
+                              </span>
+                            )}
+                            {role && colors && (
+                              <span
+                                className="text-[9px] px-1.5 py-0.5 rounded-full"
+                                style={{ backgroundColor: colors.bg, color: colors.text }}
+                              >
+                                {ROLE_EMOJI[role.category]}
+                              </span>
+                            )}
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                </div>
               );
             })}
+            {todayTasks.filter((t) => t.status === "done").length > 0 && (
+              <p className="text-[11px] text-center text-muted-foreground pt-1">
+                ✓ {todayTasks.filter((t) => t.status === "done").length}件完了
+              </p>
+            )}
           </div>
-        </motion.div>
-      )}
+        )}
+      </motion.div>
 
       {/* Inbox shortcut */}
       {inboxCount > 0 && (
