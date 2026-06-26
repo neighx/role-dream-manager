@@ -105,7 +105,11 @@ export default function TodayPage() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error((err as { error?: string }).error ?? "生成失敗");
+        const msg = (err as { error?: string }).error ?? "生成失敗";
+        setErrorMsg(msg);
+        setIsGenerating(false);
+        setGeneratingMode(null);
+        return;
       }
 
       const result = (await res.json()) as TodayPlanResult;
