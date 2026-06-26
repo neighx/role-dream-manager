@@ -100,7 +100,7 @@ export default function TodayPage() {
       const res = await fetch("/api/ai/generate-today-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ selectedRoleIds, regenerationMode }),
+        body: JSON.stringify({ selectedRoleIds, regenerationMode, todayStr: format(today, "yyyy-MM-dd") }),
       });
 
       if (!res.ok) {

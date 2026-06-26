@@ -14,9 +14,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const body = await request.json() as {
       selectedRoleIds: string[];
       regenerationMode?: RegenerationMode;
+      todayStr?: string;
     };
 
     const { selectedRoleIds, regenerationMode } = body;
+    const clientTodayStr = body.todayStr;
 
     if (!selectedRoleIds?.length) {
       return NextResponse.json({ error: "selectedRoleIds is required" }, { status: 400 });
@@ -31,7 +33,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const today = new Date();
-    const todayStr = format(today, "yyyy-MM-dd");
+    // クライアントの日付を優先（タイムゾーンずれ対策）
+    const todayStr = clientTodayStr ?? format(today, "yyyy-MM-dd");
     const weekStart = getMonday(today);
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekStart.getDate() + 6);
