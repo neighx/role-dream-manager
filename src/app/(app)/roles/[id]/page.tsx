@@ -5,11 +5,13 @@ import { useState, useEffect, use } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, Calendar, Users, MessageSquare, ImagePlus, Sparkles, Check, RefreshCw, Trash2 } from "lucide-react";
+import { ChevronLeft, Calendar, Users, MessageSquare, ImagePlus, Sparkles, Check, RefreshCw, Trash2, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { Role, Task, ROLE_CATEGORY_COLORS } from "@/types";
+import { Role, Task, ROLE_CATEGORY_COLORS, Project } from "@/types";
 import { DreamGapCard } from "@/components/roles/DreamGapCard";
 import { uploadVisionPhoto, deleteVisionPhoto } from "@/lib/image/uploadVisionPhoto";
+import { ProjectCard } from "@/components/projects/ProjectCard";
+import { ProjectForm, ProjectFormData } from "@/components/projects/ProjectForm";
 
 const ROLE_EMOJI: Record<string, string> = {
   creator: "🎵", health: "🌿", work: "💼",
@@ -36,21 +38,37 @@ export default function RoleDetailPage({ params }: { params: Promise<{ id: strin
   const supabase = createClient();
   const [role, setRole] = useState<Role | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [editingField, setEditingField] = useState<keyof Role | null>(null);
   const [editValue, setEditValue] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<Record<string, string> | null>(null);
   const [isSavingAll, setIsSavingAll] = useState(false);
+  const [activeTab, setActiveTab] = useState<"overview" | "projects">("overview");
+  const [showProjectForm, setShowProjectForm] = useState(false);
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
 
   useEffect(() => {
     async function load() {
-      const [{ data: r }, { data: t }] = await Promise.all([
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      const [{ data: r }, { data: t }, { data: p }] = await Promise.all([
         supabase.from("roles").select("*").eq("id", id).single(),
         supabase.from("tasks").select("*").eq("role_id", id).order("created_at", { ascending: false }),
+        user
+          ? supabase
+              .from("projects")
+              .select("*")
+              .eq("role_id", id)
+              .eq("user_id", user.id)
+              .order("created_at", { ascending: false })
+          : Promise.resolve({ data: [] }),
       ]);
       setRole(r);
       setTasks(t || []);
+      setProjects((p || []) as Project[]);
       setIsLoading(false);
     }
     load();
@@ -92,6 +110,39 @@ export default function RoleDetailPage({ params }: { params: Promise<{ id: strin
     setRole((r) => r ? { ...r, ...aiSuggestions } : r);
     setAiSuggestions(null);
     setIsSavingAll(false);
+  }
+
+  async function createProject(formData: ProjectFormData) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user || !role) return;
+    setIsCreatingProject(true);
+    const { data: newProject } = await supabase
+      .from("projects")
+      .insert({
+        user_id: user.id,
+        role_id: role.id,
+        title: formData.title,
+        project_type: formData.project_type,
+        target_date: formData.target_date || null,
+        goal: formData.goal || null,
+        success_metric: formData.success_metric || null,
+        budget: formData.budget ? parseInt(formData.budget) : null,
+        revenue_goal: formData.revenue_goal ? parseInt(formData.revenue_goal) : null,
+        current_state: formData.current_state || null,
+        missing_info: formData.missing_info || null,
+        priority_focus: formData.priority_focus || null,
+        status: "planning",
+      })
+      .select()
+      .single();
+
+    setIsCreatingProject(false);
+    if (newProject) {
+      setShowProjectForm(false);
+      router.push(`/projects/${newProject.id}`);
+    }
   }
 
   async function applySuggestion(field: string, value: string) {
@@ -194,8 +245,74 @@ export default function RoleDetailPage({ params }: { params: Promise<{ id: strin
 
       {/* コンテンツ */}
       <div className="px-5 py-5 space-y-5">
+        {/* タブ */}
+        <div className="flex gap-4 border-b border-border">
+          {[
+            { key: "overview" as const, label: "概要" },
+            {
+              key: "projects" as const,
+              label: `プロジェクト${projects.length > 0 ? ` (${projects.length})` : ""}`,
+            },
+          ].map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`pb-2 px-1 text-sm border-b-2 transition-colors ${
+                activeTab === tab.key
+                  ? "border-sage text-sage font-medium"
+                  : "border-transparent text-muted-foreground"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Projectsタブ */}
+        {activeTab === "projects" && (
+          <div className="space-y-4">
+            {showProjectForm ? (
+              <div className="bg-white rounded-3xl p-5 shadow-sm">
+                <h3 className="font-medium text-charcoal mb-4">新しいプロジェクト</h3>
+                <ProjectForm
+                  onSubmit={createProject}
+                  onCancel={() => setShowProjectForm(false)}
+                  isLoading={isCreatingProject}
+                />
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowProjectForm(true)}
+                className="w-full py-3 rounded-2xl border-2 border-dashed border-sage/40 text-sage text-sm flex items-center justify-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                プロジェクトを追加
+              </button>
+            )}
+            {projects.map((p) => (
+              <ProjectCard
+                key={p.id}
+                project={p}
+                roleCategory={role.category}
+                onClick={() => router.push(`/projects/${p.id}`)}
+              />
+            ))}
+            {projects.length === 0 && !showProjectForm && (
+              <div className="text-center py-8 text-muted-foreground text-sm">
+                <p className="text-3xl mb-3">📋</p>
+                <p>まだプロジェクトがありません</p>
+                <p className="text-xs mt-1">
+                  イベントやリリースなど、
+                  <br />
+                  大きな目標をプロジェクトにしよう
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* 大切にしたい価値 */}
-        {role.values.length > 0 && (
+        {activeTab === "overview" && role.values.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -217,6 +334,7 @@ export default function RoleDetailPage({ params }: { params: Promise<{ id: strin
         )}
 
         {/* Dream Gap Analysis */}
+        {activeTab === "overview" && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -224,9 +342,10 @@ export default function RoleDetailPage({ params }: { params: Promise<{ id: strin
         >
           <DreamGapCard role={role} />
         </motion.div>
+        )}
 
         {/* 目標ロードマップ */}
-        <motion.div
+        {activeTab === "overview" && <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
@@ -383,9 +502,10 @@ export default function RoleDetailPage({ params }: { params: Promise<{ id: strin
               );
             })}
           </div>
-        </motion.div>
+        </motion.div>}
 
         {/* 進捗 */}
+        {activeTab === "overview" && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -417,8 +537,10 @@ export default function RoleDetailPage({ params }: { params: Promise<{ id: strin
             <span className="text-[10px] text-muted-foreground">夢を達成</span>
           </div>
         </motion.div>
+        )}
 
         {/* 今日のTODO */}
+        {activeTab === "overview" && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -452,8 +574,10 @@ export default function RoleDetailPage({ params }: { params: Promise<{ id: strin
             </div>
           )}
         </motion.div>
+        )}
 
         {/* アクションボタン */}
+        {activeTab === "overview" && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -475,6 +599,7 @@ export default function RoleDetailPage({ params }: { params: Promise<{ id: strin
             </Link>
           ))}
         </motion.div>
+        )}
 
         <div className="h-4" />
       </div>

@@ -4,7 +4,8 @@ export type AIFeature =
   | "today_plan"
   | "quick_capture"
   | "roadmap"
-  | "weekly_review";
+  | "weekly_review"
+  | "project_breakdown";
 
 interface LogAIOptions {
   feature: AIFeature;

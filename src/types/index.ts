@@ -491,3 +491,86 @@ export const STRESS_LABELS: Record<StressCause, string> = {
   decision_fatigue: "決断疲れ",
   other: "その他",
 };
+
+// ─── Project ──────────────────────────────────────────────────
+export type ProjectStatus = "planning" | "active" | "completed" | "paused" | "archived";
+export type ProjectType = "event" | "release" | "health" | "learning" | "business" | "custom";
+export type TaskImportance = "low" | "medium" | "high";
+export type ProjectTaskStatus = "todo" | "doing" | "done" | "skipped";
+
+export interface Project {
+  id: string;
+  user_id: string;
+  role_id: string | null;
+  title: string;
+  description: string | null;
+  project_type: ProjectType;
+  goal: string | null;
+  target_date: string | null;
+  status: ProjectStatus;
+  progress: number;
+  success_metric: string | null;
+  budget: number | null;
+  revenue_goal: number | null;
+  current_state: string | null;
+  missing_info: string | null;
+  priority_focus: string | null;
+  ai_generated: boolean;
+  ai_generation_model: string | null;
+  prompt_version: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectTask {
+  id: string;
+  user_id: string;
+  project_id: string;
+  role_id: string | null;
+  title: string;
+  description: string | null;
+  due_date: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  estimated_minutes: number | null;
+  importance: TaskImportance | null;
+  urgency: TaskImportance | null;
+  quadrant: number | null;
+  status: ProjectTaskStatus;
+  dependency_task_id: string | null;
+  ai_reason: string | null;
+  created_task_id: string | null;
+  created_schedule_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AIProjectTask {
+  title: string;
+  description: string;
+  due_date: string;
+  estimated_minutes: number;
+  importance: TaskImportance;
+  urgency: TaskImportance;
+  quadrant: number;
+  should_schedule: boolean;
+  suggested_start_time: string | null;
+  suggested_end_time: string | null;
+  reason: string;
+  dependency: string | null;
+}
+
+export interface AIProjectBreakdown {
+  project_title: string;
+  project_type: ProjectType;
+  target_date: string;
+  summary: string;
+  success_metrics: string[];
+  missing_info_questions: string[];
+  tasks: AIProjectTask[];
+  today_first_action: {
+    title: string;
+    estimated_minutes: number;
+    reason: string;
+  };
+}
