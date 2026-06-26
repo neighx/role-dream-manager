@@ -85,7 +85,7 @@ export default function DailyLogPage({ params }: { params: Promise<{ date: strin
           <ArrowLeft className="w-4 h-4 text-charcoal" />
         </button>
         <div>
-          <p className="text-[11px] text-muted-foreground">まめ日記</p>
+          <p className="text-[11px] text-muted-foreground">1mm日記</p>
           <h1 className="font-medium text-charcoal text-base">{displayDate}</h1>
         </div>
         {log?.mood_after && (

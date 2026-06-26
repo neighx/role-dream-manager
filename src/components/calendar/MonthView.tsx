@@ -208,7 +208,7 @@ export function MonthView({ currentDate, events, selectedDate, dailyLogMap = {},
                     isSelected ? "bg-sage/8" : ""
                   }`}
                 >
-                  {/* 日付 + まめ日記インジケーター */}
+                  {/* 日付 + 1mm日記インジケーター */}
                   <motion.button
                     whileTap={{ scale: 0.95 }}
                     onClick={() => {

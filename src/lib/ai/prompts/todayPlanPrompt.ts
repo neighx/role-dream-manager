@@ -194,7 +194,7 @@ function buildUserPrompt(input: TodayPlanPromptInput): string {
   // ─── 直近7日間のDaily Log ──────────────────────────────────
   if (recentDailyLogs && recentDailyLogs.length > 0) {
     lines.push(``);
-    lines.push(`## 直近7日間のまめ日記`);
+    lines.push(`## 直近7日間の1mm日記`);
     recentDailyLogs.forEach((log) => {
       const parts: string[] = [`- ${log.date}`];
       if (log.mood_after) parts.push(`気分:${MOOD_LABEL_MAP[log.mood_after] ?? log.mood_after}`);

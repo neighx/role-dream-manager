@@ -654,10 +654,10 @@ export default function HomePage() {
         </div>
       </motion.div>
 
-      {/* ⑥ まめ日記 */}
+      {/* ⑥ 1mm日記 */}
       <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-[13px] font-medium text-charcoal">まめ日記</h2>
+          <h2 className="text-[13px] font-medium text-charcoal">1mm日記</h2>
           <Link href={`/daily-log/${todayStr}`} className="text-[11px] text-sage">
             詳しく記録 →
           </Link>

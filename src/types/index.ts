@@ -589,7 +589,7 @@ export interface DailyReflection {
   updated_at: string;
 }
 
-// ─── Daily Log (まめ日記) ─────────────────────────────────────
+// ─── Daily Log (1mm日記) ─────────────────────────────────────
 export interface DailyLog {
   id: string;
   user_id: string;
