@@ -574,3 +574,18 @@ export interface AIProjectBreakdown {
     reason: string;
   };
 }
+
+// ─── Daily Reflection ─────────────────────────────────────────
+export type MoodType = "great" | "good" | "okay" | "tired" | "rough";
+
+export interface DailyReflection {
+  id: string;
+  user_id: string;
+  date: string;
+  log_text: string | null;
+  role_id: string | null;
+  mood: MoodType | null;
+  created_at: string;
+  updated_at: string;
+}
+
