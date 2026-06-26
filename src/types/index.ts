@@ -589,3 +589,28 @@ export interface DailyReflection {
   updated_at: string;
 }
 
+// ─── Daily Log (まめ日記) ─────────────────────────────────────
+export interface DailyLog {
+  id: string;
+  user_id: string;
+  date: string;
+  mood_after: MoodType | null;
+  one_line_diary: string | null;
+  roles_grown: string[] | null;
+  exercise_minutes: number;
+  english_minutes: number;
+  creator_minutes: number;
+  work_minutes: number;
+  study_minutes: number;
+  sleep_hours: number | null;
+  weather: string | null;
+  temperature: number | null;
+  location: string | null;
+  weather_provider: string | null;
+  weather_fetched_at: string | null;
+  photo_url: string | null;
+  tomorrow_note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+

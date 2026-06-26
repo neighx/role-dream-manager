@@ -5,7 +5,11 @@ import { motion } from "framer-motion";
 import { format, isSameMonth, isToday } from "date-fns";
 import { ja } from "date-fns/locale";
 import { getMonthGrid, getEventsForDay, getRoleColor, getRoleTextColor } from "@/lib/calendar/calendarUtils";
-import { CalendarEvent } from "@/types";
+import { CalendarEvent, MoodType } from "@/types";
+
+const MOOD_EMOJI_SMALL: Record<MoodType, string> = {
+  great: "🌟", good: "😊", okay: "😐", tired: "😴", rough: "😔",
+};
 import { CalendarEventChip } from "./CalendarEventChip";
 
 const DAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
@@ -14,12 +18,13 @@ interface MonthViewProps {
   currentDate: Date;
   events: CalendarEvent[];
   selectedDate: Date;
+  dailyLogMap?: Record<string, { mood_after: MoodType | null }>;
   onSelectDate: (date: Date) => void;
   onSelectEvent: (event: CalendarEvent) => void;
   onEventMoved?: (event: CalendarEvent, newStart: Date, newEnd: Date) => Promise<void>;
 }
 
-export function MonthView({ currentDate, events, selectedDate, onSelectDate, onSelectEvent, onEventMoved }: MonthViewProps) {
+export function MonthView({ currentDate, events, selectedDate, dailyLogMap = {}, onSelectDate, onSelectEvent, onEventMoved }: MonthViewProps) {
   const weeks = getMonthGrid(currentDate);
 
   const ghostRef = useRef<HTMLDivElement | null>(null);
@@ -189,6 +194,7 @@ export function MonthView({ currentDate, events, selectedDate, onSelectDate, onS
               const isCurrentMonth = isSameMonth(day, currentDate);
               const isTodayDate = isToday(day);
               const isSelected = dateStr === format(selectedDate, "yyyy-MM-dd");
+              const dayLog = dailyLogMap[dateStr];
 
               return (
                 <div
@@ -202,13 +208,13 @@ export function MonthView({ currentDate, events, selectedDate, onSelectDate, onS
                     isSelected ? "bg-sage/8" : ""
                   }`}
                 >
-                  {/* 日付 */}
+                  {/* 日付 + まめ日記インジケーター */}
                   <motion.button
                     whileTap={{ scale: 0.95 }}
                     onClick={() => {
                       if (!isDraggingRef.current) onSelectDate(day);
                     }}
-                    className="flex justify-center w-full"
+                    className="flex flex-col items-center w-full gap-0.5"
                   >
                     <div
                       className={`w-7 h-7 flex items-center justify-center rounded-full text-xs ${
@@ -223,6 +229,11 @@ export function MonthView({ currentDate, events, selectedDate, onSelectDate, onS
                     >
                       {format(day, "d")}
                     </div>
+                    {dayLog && (
+                      <span className="text-[9px] leading-none">
+                        {dayLog.mood_after ? MOOD_EMOJI_SMALL[dayLog.mood_after] : "📝"}
+                      </span>
+                    )}
                   </motion.button>
 
                   {/* イベント（ドラッグ対応） */}

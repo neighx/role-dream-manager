@@ -1,7 +1,7 @@
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 import {
-  Role, DailyCheckin, UserProfile, Task, Schedule,
+  Role, DailyCheckin, UserProfile, Task, Schedule, DailyLog,
   PetType, MOOD_LABELS, MODE_LABELS, STRESS_LABELS,
 } from "@/types";
 import { AIMessage } from "../providers/base";
@@ -79,19 +79,20 @@ export interface TodayPlanPromptInput {
   recentDoneTasks: Task[];
   pendingTasks: Task[];
   weekSchedules: Schedule[];
+  recentDailyLogs?: DailyLog[];
   regenerationMode?: string;
 }
 
 export function buildTodayPlanMessages(input: TodayPlanPromptInput): AIMessage[] {
   const {
     date, profile, checkin, selectedRoles,
-    recentDoneTasks, pendingTasks, weekSchedules, regenerationMode,
+    recentDoneTasks, pendingTasks, weekSchedules, recentDailyLogs, regenerationMode,
   } = input;
 
   const systemPrompt = buildSystemPrompt();
   const userPrompt = buildUserPrompt({
     date, profile, checkin, selectedRoles,
-    recentDoneTasks, pendingTasks, weekSchedules, regenerationMode,
+    recentDoneTasks, pendingTasks, weekSchedules, recentDailyLogs, regenerationMode,
   });
 
   return [
@@ -123,10 +124,14 @@ Output schema:
 ${OUTPUT_SCHEMA}`;
 }
 
+const MOOD_LABEL_MAP: Record<string, string> = {
+  great: "最高", good: "良い", okay: "普通", tired: "疲れた", rough: "辛い",
+};
+
 function buildUserPrompt(input: TodayPlanPromptInput): string {
   const {
     date, profile, checkin, selectedRoles,
-    recentDoneTasks, pendingTasks, weekSchedules, regenerationMode,
+    recentDoneTasks, pendingTasks, weekSchedules, recentDailyLogs, regenerationMode,
   } = input;
 
   const petType = (profile.selected_pet || "cat") as PetType;
@@ -183,6 +188,26 @@ function buildUserPrompt(input: TodayPlanPromptInput): string {
     weekSchedules.slice(0, 8).forEach((s) => {
       const dt = new Date(s.start_time);
       lines.push(`- ${format(dt, "M/d（E）", { locale: ja })} ${s.title}`);
+    });
+  }
+
+  // ─── 直近7日間のDaily Log ──────────────────────────────────
+  if (recentDailyLogs && recentDailyLogs.length > 0) {
+    lines.push(``);
+    lines.push(`## 直近7日間のまめ日記`);
+    recentDailyLogs.forEach((log) => {
+      const parts: string[] = [`- ${log.date}`];
+      if (log.mood_after) parts.push(`気分:${MOOD_LABEL_MAP[log.mood_after] ?? log.mood_after}`);
+      const mins: string[] = [];
+      if (log.english_minutes > 0)  mins.push(`英語${log.english_minutes}分`);
+      if (log.exercise_minutes > 0) mins.push(`運動${log.exercise_minutes}分`);
+      if (log.creator_minutes > 0)  mins.push(`制作${log.creator_minutes}分`);
+      if (log.work_minutes > 0)     mins.push(`仕事${log.work_minutes}分`);
+      if (log.study_minutes > 0)    mins.push(`勉強${log.study_minutes}分`);
+      if (mins.length) parts.push(mins.join("/"));
+      if (log.sleep_hours) parts.push(`睡眠${log.sleep_hours}h`);
+      if (log.one_line_diary) parts.push(`「${log.one_line_diary}」`);
+      lines.push(parts.join(" "));
     });
   }
 

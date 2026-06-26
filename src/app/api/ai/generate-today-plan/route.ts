@@ -5,7 +5,7 @@ import { isAIConfigured } from "@/lib/ai/aiClient";
 import { generateTodayPlanWithAI } from "@/lib/ai/generateTodayPlanWithAI";
 import { TODAY_PLAN_PROMPT_VERSION } from "@/lib/ai/prompts/todayPlanPrompt";
 import { ruleBasedTodayPlan } from "@/lib/plans/ruleBasedTodayPlan";
-import { TodayPlanResult, RegenerationMode, Role, Task, Schedule } from "@/types";
+import { TodayPlanResult, RegenerationMode, Role, Task, Schedule, DailyLog } from "@/types";
 
 export const dynamic = "force-dynamic";
 
@@ -40,12 +40,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     weekEnd.setDate(weekStart.getDate() + 6);
 
     // ─── データロード ─────────────────────────────────────────
+    const sevenDaysAgo = format(new Date(Date.now() - 7 * 86400000), "yyyy-MM-dd");
+
     const [
       { data: profile },
       { data: checkin },
       { data: allRoles },
       { data: recentTasks },
       { data: weekSchedules },
+      { data: recentLogs },
     ] = await Promise.all([
       supabase.from("users_profile").select("*").eq("user_id", user.id).single(),
       supabase.from("daily_checkins").select("*")
@@ -57,6 +60,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       supabase.from("schedules").select("*").eq("user_id", user.id)
         .gte("start_time", `${format(weekStart, "yyyy-MM-dd")}T00:00:00`)
         .lte("start_time", `${format(weekEnd, "yyyy-MM-dd")}T23:59:59`),
+      supabase.from("daily_logs").select(
+        "date, mood_after, one_line_diary, exercise_minutes, english_minutes, creator_minutes, work_minutes, study_minutes, roles_grown, sleep_hours, weather"
+      ).eq("user_id", user.id).gte("date", sevenDaysAgo).order("date", { ascending: false }),
     ]);
 
     if (!checkin) {
@@ -89,6 +95,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           recentDoneTasks,
           pendingTasks,
           weekSchedules: (weekSchedules ?? []) as Schedule[],
+          recentDailyLogs: (recentLogs ?? []) as DailyLog[],
           regenerationMode,
         });
       } catch (aiError) {

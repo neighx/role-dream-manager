@@ -9,9 +9,10 @@ import { ja } from "date-fns/locale";
 import { ArrowRight, Plus, Sparkles, Moon, Sun, Inbox, X, Trash2, ChevronDown } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
-  UserProfile, Role, DailyCheckin, Task, Schedule, ProjectTask, DailyReflection, MoodType,
+  UserProfile, Role, DailyCheckin, Task, Schedule, ProjectTask, DailyLog, MoodType,
   PetType, EnergyLevel, DayMode, ROLE_CATEGORY_COLORS, MODE_LABELS, TaskStatus,
 } from "@/types";
+import { MOOD_EMOJI } from "@/components/daily-log/DailyLogForm";
 
 // ─── 定数 ──────────────────────────────────────────────────────
 
@@ -165,7 +166,7 @@ export default function HomePage() {
   const [todayTasks, setTodayTasks] = useState<Task[]>([]);
   const [todayProjectTasks, setTodayProjectTasks] = useState<ProjectTask[]>([]);
   const [inboxCount, setInboxCount] = useState(0);
-  const [reflection, setReflection] = useState<DailyReflection | null>(null);
+  const [todayLog, setTodayLog] = useState<DailyLog | null>(null);
 
   // ─ UI
   const [showAddForm, setShowAddForm] = useState(false);
@@ -175,12 +176,6 @@ export default function HomePage() {
   const [showDoneTasks, setShowDoneTasks] = useState(false);
   const [expandedRoleId, setExpandedRoleId] = useState<string | null>(null);
 
-  // ─ 振り返り
-  const [reflectionText, setReflectionText] = useState("");
-  const [reflectionRoleId, setReflectionRoleId] = useState<string | null>(null);
-  const [reflectionMood, setReflectionMood] = useState<MoodType | null>(null);
-  const [isSavingReflection, setIsSavingReflection] = useState(false);
-  const [reflectionSaved, setReflectionSaved] = useState(false);
 
   const today = new Date();
   const hour = today.getHours();
@@ -218,15 +213,9 @@ export default function HomePage() {
       setTodayProjectTasks((pt || []) as ProjectTask[]);
       setInboxCount(ic ?? 0);
 
-      // 振り返り（テーブルが存在しない場合は静かに無視）
-      const { data: rf } = await supabase.from("daily_reflections")
+      const { data: lg } = await supabase.from("daily_logs")
         .select("*").eq("user_id", user.id).eq("date", todayStr).maybeSingle();
-      if (rf) {
-        setReflection(rf as DailyReflection);
-        setReflectionText((rf as DailyReflection).log_text || "");
-        setReflectionRoleId((rf as DailyReflection).role_id || null);
-        setReflectionMood((rf as DailyReflection).mood || null);
-      }
+      if (lg) setTodayLog(lg as DailyLog);
     }
     load();
   }, []);
@@ -313,24 +302,6 @@ export default function HomePage() {
     setIsAdding(false);
   }
 
-  async function saveReflection() {
-    if (!reflectionText.trim()) return;
-    setIsSavingReflection(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setIsSavingReflection(false); return; }
-    const { data } = await supabase.from("daily_reflections").upsert({
-      user_id: user.id,
-      date: todayStr,
-      log_text: reflectionText.trim(),
-      role_id: reflectionRoleId || null,
-      mood: reflectionMood || null,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: "user_id,date" }).select().single();
-    if (data) setReflection(data as DailyReflection);
-    setReflectionSaved(true);
-    setTimeout(() => setReflectionSaved(false), 2000);
-    setIsSavingReflection(false);
-  }
 
   // ─── レンダリング ──────────────────────────────────────────────
 
@@ -683,65 +654,51 @@ export default function HomePage() {
         </div>
       </motion.div>
 
-      {/* ⑥ 今日の1行振り返り */}
+      {/* ⑥ まめ日記 */}
       <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
-        <div className="mb-3">
-          <h2 className="text-[13px] font-medium text-charcoal">今日の1行振り返り</h2>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
-            どのRoleを少し育てられましたか？1行だけ残しましょう。
-          </p>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-[13px] font-medium text-charcoal">まめ日記</h2>
+          <Link href={`/daily-log/${todayStr}`} className="text-[11px] text-sage">
+            詳しく記録 →
+          </Link>
         </div>
-        <div className="bg-white rounded-2xl p-4 shadow-sm space-y-3">
-          <textarea
-            value={reflectionText}
-            onChange={e => setReflectionText(e.target.value)}
-            placeholder={isEvening ? "今日、小さく進めたこと…" : "今日意識したいこと…"}
-            rows={2}
-            className="w-full px-3 py-2.5 text-sm rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-sage/30 resize-none"
-          />
-
-          {/* 気分 */}
-          <div className="flex gap-1.5">
-            {MOODS.map(m => (
-              <button key={m.value}
-                onClick={() => setReflectionMood(prev => prev === m.value ? null : m.value)}
-                className="flex-1 py-2 rounded-xl text-center transition-all border"
-                style={{
-                  backgroundColor: reflectionMood === m.value ? "#C8DBC6" : "transparent",
-                  borderColor: reflectionMood === m.value ? "#9DBF98" : "#E0DDD8",
-                }}>
-                <p className="text-base leading-none">{m.emoji}</p>
-                <p className="text-[8px] text-muted-foreground mt-0.5">{m.label}</p>
-              </button>
-            ))}
+        <Link href={`/daily-log/${todayStr}`}>
+          <div className="bg-white rounded-2xl p-4 shadow-sm active:scale-[0.98] transition-transform">
+            {todayLog ? (
+              <div className="space-y-2">
+                <div className="flex items-start gap-3">
+                  <span className="text-2xl shrink-0">
+                    {todayLog.mood_after ? MOOD_EMOJI[todayLog.mood_after] : "📝"}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    {todayLog.one_line_diary ? (
+                      <p className="text-sm text-charcoal">&ldquo;{todayLog.one_line_diary}&rdquo;</p>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">続けて記録する →</p>
+                    )}
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      {todayLog.english_minutes > 0 && <span className="text-[9px] bg-blue-50 text-blue-500 px-1.5 py-0.5 rounded-full">🌍 {todayLog.english_minutes}分</span>}
+                      {todayLog.exercise_minutes > 0 && <span className="text-[9px] bg-green-50 text-green-500 px-1.5 py-0.5 rounded-full">🌿 {todayLog.exercise_minutes}分</span>}
+                      {todayLog.creator_minutes > 0 && <span className="text-[9px] bg-purple-50 text-purple-500 px-1.5 py-0.5 rounded-full">🎵 {todayLog.creator_minutes}分</span>}
+                      {todayLog.weather && <span className="text-[9px] text-muted-foreground">{todayLog.weather}</span>}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">📝</span>
+                <div>
+                  <p className="text-sm font-medium text-charcoal">今日を1行で残す</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    小さな記録が、明日のプランを良くします
+                  </p>
+                </div>
+                <ArrowRight className="w-4 h-4 text-muted-foreground ml-auto shrink-0" />
+              </div>
+            )}
           </div>
-
-          {/* 育てたRole */}
-          {roles.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {roles.map(role => {
-                const colors = ROLE_CATEGORY_COLORS[role.category];
-                const isSelected = reflectionRoleId === role.id;
-                return (
-                  <button key={role.id}
-                    onClick={() => setReflectionRoleId(prev => prev === role.id ? null : role.id)}
-                    className="px-2.5 py-1 rounded-full text-[10px] font-medium transition-all"
-                    style={{
-                      backgroundColor: isSelected ? colors.bg : "#F5F3EF",
-                      color: isSelected ? colors.text : "#999",
-                    }}>
-                    {ROLE_EMOJI[role.category]} {role.title}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          <button onClick={saveReflection} disabled={!reflectionText.trim() || isSavingReflection}
-            className="w-full py-2.5 rounded-xl bg-sage text-white text-sm font-medium disabled:opacity-40 transition-all">
-            {reflectionSaved ? "✓ 今日を記録しました" : isSavingReflection ? "保存中…" : "今日を記録する"}
-          </button>
-        </div>
+        </Link>
       </motion.div>
 
       {/* Inbox */}
