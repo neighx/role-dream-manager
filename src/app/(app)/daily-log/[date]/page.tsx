@@ -4,8 +4,8 @@ export const dynamic = "force-dynamic";
 import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { ArrowLeft, CheckCircle2, Circle } from "lucide-react";
-import { format } from "date-fns";
+import { ArrowLeft, ChevronLeft, ChevronRight, CheckCircle2, Circle } from "lucide-react";
+import { format, addDays, subDays, isAfter, startOfDay } from "date-fns";
 import { ja } from "date-fns/locale";
 import { createClient } from "@/lib/supabase/client";
 import { DailyLog, Role, Task, Schedule, PetType, ROLE_CATEGORY_COLORS } from "@/types";
@@ -28,10 +28,16 @@ export default function DailyLogPage({ params }: { params: Promise<{ date: strin
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const displayDate = (() => {
-    try { return format(new Date(date + "T00:00:00"), "M月d日（E）", { locale: ja }); }
-    catch { return date; }
+  const dateObj = (() => {
+    try { return new Date(date + "T00:00:00"); }
+    catch { return new Date(); }
   })();
+  const displayDate = format(dateObj, "M月d日（E）", { locale: ja });
+  const isFuture = isAfter(startOfDay(dateObj), startOfDay(new Date()));
+
+  function goToDate(d: Date) {
+    router.push(`/daily-log/${format(d, "yyyy-MM-dd")}`);
+  }
 
   useEffect(() => {
     async function load() {
@@ -77,19 +83,34 @@ export default function DailyLogPage({ params }: { params: Promise<{ date: strin
   return (
     <div className="px-5 pt-safe pt-6 pb-10 space-y-4">
       {/* ヘッダー */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
         <button
           onClick={() => router.back()}
           className="w-8 h-8 rounded-xl bg-mist flex items-center justify-center shrink-0"
         >
           <ArrowLeft className="w-4 h-4 text-charcoal" />
         </button>
-        <div>
-          <p className="text-[11px] text-muted-foreground">1mm日記</p>
-          <h1 className="font-medium text-charcoal text-base">{displayDate}</h1>
+        <div className="flex-1 flex items-center justify-between">
+          <button
+            onClick={() => goToDate(subDays(dateObj, 1))}
+            className="w-7 h-7 rounded-lg bg-mist flex items-center justify-center"
+          >
+            <ChevronLeft className="w-4 h-4 text-charcoal" />
+          </button>
+          <div className="text-center">
+            <p className="text-[10px] text-muted-foreground">1mm日記</p>
+            <h1 className="font-medium text-charcoal text-sm">{displayDate}</h1>
+          </div>
+          <button
+            onClick={() => goToDate(addDays(dateObj, 1))}
+            disabled={isFuture}
+            className={`w-7 h-7 rounded-lg flex items-center justify-center ${isFuture ? "opacity-30" : "bg-mist"}`}
+          >
+            <ChevronRight className="w-4 h-4 text-charcoal" />
+          </button>
         </div>
         {log?.mood_after && (
-          <span className="ml-auto text-2xl">{MOOD_EMOJI[log.mood_after]}</span>
+          <span className="text-2xl shrink-0">{MOOD_EMOJI[log.mood_after]}</span>
         )}
       </div>
 

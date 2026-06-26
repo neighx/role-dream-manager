@@ -300,6 +300,7 @@ function CalendarContent() {
               onAddSchedule={(hour) => handleAddSchedule(viewMode === "today" ? new Date() : currentDate, hour)}
               onEventResized={handleEventResized}
               onEventMoved={handleEventMoved}
+              dailyLogMap={dailyLogMap}
             />
           </motion.div>
         )}

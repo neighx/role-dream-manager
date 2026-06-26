@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useEffect } from "react";
+import Link from "next/link";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 import { getEventsForDay, getRoleColor, getRoleTextColor } from "@/lib/calendar/calendarUtils";
@@ -30,11 +31,12 @@ interface DayViewProps {
   onAddSchedule: (hour?: number) => void;
   onEventResized?: (event: CalendarEvent, newEnd: Date) => Promise<void>;
   onEventMoved?: (event: CalendarEvent, newStart: Date, newEnd: Date) => Promise<void>;
+  dailyLogMap?: Record<string, { mood_after: string | null }>;
 }
 
 export function DayView({
   currentDate, events, onSelectEvent, onAddSchedule,
-  onEventResized, onEventMoved,
+  onEventResized, onEventMoved, dailyLogMap = {},
 }: DayViewProps) {
   const dayEvents = getEventsForDay(events, currentDate);
   const allDayEvents = dayEvents.filter((e) => e.isAllDay);
@@ -178,8 +180,24 @@ export function DayView({
     };
   }
 
+  const dateStr = format(currentDate, "yyyy-MM-dd");
+  const logEntry = dailyLogMap[dateStr];
+
   return (
     <div className="space-y-3">
+      {/* 1mm日記リンク */}
+      <Link
+        href={`/daily-log/${dateStr}`}
+        className="flex items-center justify-between bg-white rounded-2xl px-4 py-3"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-base">{logEntry?.mood_after ? { great: "🌟", good: "😊", okay: "😐", tired: "😴", rough: "😔" }[logEntry.mood_after] ?? "📖" : "📖"}</span>
+          <span className="text-sm text-charcoal">1mm日記</span>
+          {logEntry && <span className="text-[10px] text-sage bg-sage/10 px-2 py-0.5 rounded-full">記録済み</span>}
+        </div>
+        <span className="text-xs text-muted-foreground">{logEntry ? "編集 →" : "記録する →"}</span>
+      </Link>
+
       {/* 終日イベント */}
       {allDayEvents.length > 0 && (
         <div className="bg-white rounded-2xl p-3 space-y-2">
