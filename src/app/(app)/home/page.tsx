@@ -10,7 +10,7 @@ import { ArrowRight, Plus, Sparkles, Moon, Sun, Inbox, X, Trash2, ChevronDown } 
 import { createClient } from "@/lib/supabase/client";
 import {
   UserProfile, Role, DailyCheckin, Task, Schedule, ProjectTask, DailyLog, MoodType,
-  PetType, EnergyLevel, DayMode, ROLE_CATEGORY_COLORS, MODE_LABELS, TaskStatus,
+  PetType, EnergyLevel, DayMode, DisplayMode, ROLE_CATEGORY_COLORS, MODE_LABELS, TaskStatus,
 } from "@/types";
 import { MOOD_EMOJI } from "@/components/daily-log/DailyLogForm";
 
@@ -45,6 +45,15 @@ const QUADRANT_INFO: Record<number, { label: string; color: string }> = {
   2: { label: "重要",       color: "#C8DBC6" },
   3: { label: "緊急",       color: "#BDD5EA" },
   4: { label: "低優先",     color: "#E0DDD8" },
+};
+
+const EASY_ROLE_LABELS: Record<string, string> = {
+  creator:      "つくること",
+  health:       "からだ",
+  work:         "しごと",
+  relationship: "たいせつな人",
+  learning:     "まなぶこと",
+  selfcare:     "じぶんを大切に",
 };
 
 const MOODS: { value: MoodType; emoji: string; label: string }[] = [
@@ -92,14 +101,16 @@ function buildContextMessage(
 type TodoItemProps = {
   task: UnifiedTask;
   role: Role | null;
+  displayMode: DisplayMode;
   onToggle: () => void;
   onDelete: () => void;
 };
 
-function TodoItem({ task, role, onToggle, onDelete }: TodoItemProps) {
+function TodoItem({ task, role, displayMode, onToggle, onDelete }: TodoItemProps) {
   const colors = role ? ROLE_CATEGORY_COLORS[role.category] : null;
   const qInfo = QUADRANT_INFO[task.quadrant ?? 1];
   const isDone = task.status === "done";
+  const isSimple = displayMode === "simple";
 
   return (
     <div className="px-4 py-3.5 border-b border-mist last:border-0">
@@ -127,20 +138,23 @@ function TodoItem({ task, role, onToggle, onDelete }: TodoItemProps) {
               )}
               {role && (
                 <span className="text-[10px] text-muted-foreground">
-                  {ROLE_EMOJI[role.category]} {role.title}
+                  {ROLE_EMOJI[role.category]}{" "}
+                  {isSimple ? EASY_ROLE_LABELS[role.category] || role.title : role.title}
                 </span>
               )}
-              {role?.gap && (
+              {!isSimple && role?.gap && (
                 <span className="text-[10px] text-muted-foreground/70 truncate max-w-[200px]">
                   Gap: {role.gap.length > 28 ? role.gap.slice(0, 28) + "…" : role.gap}
                 </span>
               )}
-              <span
-                className="text-[9px] px-1.5 py-0.5 rounded-full font-medium"
-                style={{ backgroundColor: qInfo.color, color: "#444" }}
-              >
-                {qInfo.label}
-              </span>
+              {!isSimple && (
+                <span
+                  className="text-[9px] px-1.5 py-0.5 rounded-full font-medium"
+                  style={{ backgroundColor: qInfo.color, color: "#444" }}
+                >
+                  {qInfo.label}
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -175,6 +189,11 @@ export default function HomePage() {
   const [isAdding, setIsAdding] = useState(false);
   const [showDoneTasks, setShowDoneTasks] = useState(false);
   const [expandedRoleId, setExpandedRoleId] = useState<string | null>(null);
+  const [displayMode, setDisplayMode] = useState<DisplayMode>("simple");
+  const [showGoalModal, setShowGoalModal] = useState(false);
+  const [goalInput, setGoalInput] = useState("");
+  const [isGeneratingGoal, setIsGeneratingGoal] = useState(false);
+  const [goalResult, setGoalResult] = useState<{ simple_title: string; easy_category_display: string; today_tasks: { title: string; easy_reason: string }[]; pet_message: string } | null>(null);
 
 
   const today = new Date();
@@ -193,7 +212,7 @@ export default function HomePage() {
       const weekEndStr = format(addDays(weekStart, 6), "yyyy-MM-dd");
 
       const [{ data: p }, { data: r }, { data: c }, { data: s }, { data: t }, { count: ic }, { data: pt }] = await Promise.all([
-        supabase.from("users_profile").select("name,selected_pet,life_vision").eq("user_id", user.id).single(),
+        supabase.from("users_profile").select("name,selected_pet,life_vision,display_mode").eq("user_id", user.id).single(),
         supabase.from("roles").select("id,title,category,dream,gap,monthly_goal,vision_photo_url,values,progress").eq("user_id", user.id).order("display_order").limit(6),
         supabase.from("daily_checkins").select("*").eq("user_id", user.id).eq("date", todayStr).maybeSingle(),
         supabase.from("schedules").select("id,title,start_time,role_id,is_all_day")
@@ -206,6 +225,9 @@ export default function HomePage() {
       ]);
 
       setProfile(p as unknown as UserProfile);
+      if ((p as unknown as UserProfile)?.display_mode) {
+        setDisplayMode((p as unknown as UserProfile).display_mode);
+      }
       setRoles((r || []) as unknown as Role[]);
       setCheckin(c);
       setWeekSchedules((s || []) as unknown as Schedule[]);
@@ -283,6 +305,38 @@ export default function HomePage() {
     }
   }
 
+  async function generateGoal() {
+    if (!goalInput.trim()) return;
+    setIsGeneratingGoal(true);
+    setGoalResult(null);
+    try {
+      const res = await fetch("/api/ai/classify-goal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          goal_text: goalInput.trim(),
+          deadline_type: "undecided",
+          deadline_date: null,
+          save_to_db: true,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setGoalResult(data);
+        // TODOリストを再読み込み
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: t } = await supabase.from("tasks").select("*").eq("user_id", user.id).eq("due_date", todayStr).order("quadrant").limit(30);
+          setTodayTasks(t || []);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsGeneratingGoal(false);
+    }
+  }
+
   async function addTask() {
     if (!newTitle.trim()) return;
     setIsAdding(true);
@@ -306,6 +360,7 @@ export default function HomePage() {
   // ─── レンダリング ──────────────────────────────────────────────
 
   return (
+    <>
     <div className="px-5 pt-safe pt-5 pb-10 space-y-4">
 
       {/* ① 日付 + ペット */}
@@ -382,7 +437,9 @@ export default function HomePage() {
       {/* ③ 今日のTODO TOP 3 */}
       <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-[13px] font-medium text-charcoal">今日のTODO</h2>
+          <h2 className="text-[13px] font-medium text-charcoal">
+            {displayMode === "simple" ? "今日の小さな一歩" : "今日のTODO"}
+          </h2>
           <div className="flex items-center gap-3">
             <button onClick={() => setShowAddForm(v => !v)} className="flex items-center gap-0.5 text-[11px] text-sage">
               <Plus className="w-3.5 h-3.5" />追加
@@ -443,6 +500,7 @@ export default function HomePage() {
                 key={`${task.source}-${task.id}`}
                 task={task}
                 role={getRoleForId(task.role_id)}
+                displayMode={displayMode}
                 onToggle={() => toggleDone(task.id, task.source)}
                 onDelete={() => deleteItem(task.id, task.source)}
               />
@@ -471,6 +529,7 @@ export default function HomePage() {
                           key={`done-${task.source}-${task.id}`}
                           task={task}
                           role={getRoleForId(task.role_id)}
+                          displayMode={displayMode}
                           onToggle={() => toggleDone(task.id, task.source)}
                           onDelete={() => deleteItem(task.id, task.source)}
                         />
@@ -484,11 +543,24 @@ export default function HomePage() {
         )}
       </motion.div>
 
+      {/* やりたいことを追加ボタン */}
+      <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.13 }}>
+        <button
+          onClick={() => { setShowGoalModal(true); setGoalResult(null); setGoalInput(""); }}
+          className="w-full bg-sage text-white rounded-2xl py-3.5 flex items-center justify-center gap-2 font-medium text-sm shadow-sm active:scale-[0.98] transition-transform"
+        >
+          <Plus className="w-4 h-4" />
+          やりたいことを追加
+        </button>
+      </motion.div>
+
       {/* ④ 今日のRole Plan（コンパクト展開式） */}
       {roles.length > 0 && (
         <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-[13px] font-medium text-charcoal">Role Plan</h2>
+            <h2 className="text-[13px] font-medium text-charcoal">
+              {displayMode === "simple" ? "やりたいことリスト" : "Role Plan"}
+            </h2>
             <Link href="/roles" className="flex items-center gap-0.5 text-[11px] text-sage">
               すべて <ArrowRight className="w-3 h-3" />
             </Link>
@@ -508,7 +580,9 @@ export default function HomePage() {
                       <div className="flex-1 px-4 py-3.5">
                         <div className="flex items-center gap-2 mb-1.5">
                           <span className="text-lg leading-none">{ROLE_EMOJI[role.category]}</span>
-                          <span className="text-sm font-medium text-charcoal flex-1">{role.title}</span>
+                          <span className="text-sm font-medium text-charcoal flex-1">
+                            {displayMode === "simple" ? EASY_ROLE_LABELS[role.category] || role.title : role.title}
+                          </span>
                           <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform shrink-0 ${isExpanded ? "rotate-180" : ""}`} />
                         </div>
                         {role.monthly_goal && (
@@ -517,7 +591,7 @@ export default function HomePage() {
                             {role.monthly_goal.length > 42 ? role.monthly_goal.slice(0, 42) + "…" : role.monthly_goal}
                           </p>
                         )}
-                        {role.gap && (
+                        {role.gap && displayMode === "detail" && (
                           <div className="rounded-lg px-2.5 py-1.5" style={{ backgroundColor: colors.bg + "70" }}>
                             <p className="text-[10px]" style={{ color: colors.text }}>
                               Gap: {role.gap.length > 50 ? role.gap.slice(0, 50) + "…" : role.gap}
@@ -743,5 +817,95 @@ export default function HomePage() {
       </motion.div>
 
     </div>
+
+    {/* やりたいことを追加 モーダル */}
+
+    <AnimatePresence>
+      {showGoalModal && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 bg-black/40 z-50 flex items-end"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowGoalModal(false); }}
+        >
+          <motion.div
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "100%" }}
+            transition={{ type: "spring", damping: 28, stiffness: 300 }}
+            className="bg-ivory w-full rounded-t-3xl p-5 pb-10 max-h-[85vh] overflow-y-auto"
+          >
+            <div className="w-8 h-1 bg-mist rounded-full mx-auto mb-5" />
+            <h3 className="text-lg font-medium text-charcoal mb-1">
+              {goalResult ? "手順を作りました" : "やりたいことを追加"}
+            </h3>
+
+            {!goalResult ? (
+              <div className="space-y-4 mt-3">
+                <p className="text-sm text-muted-foreground">
+                  AIが手順と今日やることを自動で作ります。
+                </p>
+                <textarea
+                  autoFocus
+                  value={goalInput}
+                  onChange={(e) => setGoalInput(e.target.value)}
+                  placeholder={"例：7月30日にイベントを開催したい\n来月までに曲を完成させたい\n英語を毎日15分やりたい"}
+                  className="w-full text-sm text-charcoal bg-white rounded-2xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-sage/40 resize-none border border-mist"
+                  rows={4}
+                />
+                <button
+                  onClick={generateGoal}
+                  disabled={!goalInput.trim() || isGeneratingGoal}
+                  className="w-full py-4 rounded-2xl bg-sage text-white font-medium text-sm disabled:opacity-40 flex items-center justify-center gap-2"
+                >
+                  {isGeneratingGoal ? (
+                    <>
+                      <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                      AIが手順を作っています…
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      AIに手順を作ってもらう
+                    </>
+                  )}
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4 mt-3">
+                <div className="bg-sage/10 rounded-xl px-3 py-2.5">
+                  <p className="text-sm text-sage">
+                    これは「{goalResult.easy_category_display}」に入れておきました
+                  </p>
+                </div>
+                <div className="bg-white rounded-2xl p-4 space-y-2.5">
+                  <p className="text-xs text-muted-foreground font-medium">まず今日やること</p>
+                  {goalResult.today_tasks.map((t, i) => (
+                    <div key={i} className="flex items-center gap-2.5">
+                      <div className="w-4 h-4 rounded-full border-2 border-sage shrink-0" />
+                      <div>
+                        <p className="text-sm text-charcoal">{t.title}</p>
+                        <p className="text-[11px] text-muted-foreground">{t.easy_reason}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-sm text-charcoal bg-white rounded-2xl px-4 py-3">
+                  {petType === "dog" ? "🐶" : petType === "robot" ? "🤖" : "🐱"} {goalResult.pet_message}
+                </p>
+                <button
+                  onClick={() => setShowGoalModal(false)}
+                  className="w-full py-4 rounded-2xl bg-sage text-white font-medium text-sm"
+                >
+                  ホームに戻る
+                </button>
+              </div>
+            )}
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+    </>
   );
 }

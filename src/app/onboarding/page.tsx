@@ -8,114 +8,58 @@ import { createClient } from "@/lib/supabase/client";
 import { OnboardingLayout } from "@/components/onboarding/OnboardingLayout";
 import { BirthdayStep } from "@/components/onboarding/steps/BirthdayStep";
 import { GenderStep } from "@/components/onboarding/steps/GenderStep";
-import { RoleSelectionStep } from "@/components/onboarding/steps/RoleSelectionStep";
-import { RolePriorityStep } from "@/components/onboarding/steps/RolePriorityStep";
-import { RoleDreamStep } from "@/components/onboarding/steps/RoleDreamStep";
-import { VisionPhotoStep } from "@/components/onboarding/steps/VisionPhotoStep";
+import { GoalSelectionStep } from "@/components/onboarding/steps/GoalSelectionStep";
+import { DeadlineStep, DeadlineType } from "@/components/onboarding/steps/DeadlineStep";
+import { AIGoalPlanStep } from "@/components/onboarding/steps/AIGoalPlanStep";
 import { PetSelectionStep } from "@/components/onboarding/steps/PetSelectionStep";
-import { OnboardingSummaryStep } from "@/components/onboarding/steps/OnboardingSummaryStep";
-import { OnboardingFormData, RoleCategory } from "@/types";
+import { PetType } from "@/types";
 
-const ROLE_NAMES: Record<RoleCategory, string> = {
-  creator: "クリエイター",
-  health: "健康・スポーツ",
-  work: "仕事・ビジネス",
-  relationship: "恋愛・人間関係",
-  learning: "学び・未来",
-  selfcare: "自分のケア",
-};
+// ─── ステップ定義 ──────────────────────────────────────────────
+// 0: 誕生日
+// 1: 性別
+// 2: やりたいこと
+// 3: いつまでに
+// 4: AI手順生成
+// 5: ペット選択
+// 6: 完了
+const TOTAL_STEPS = 7;
 
-const DEFAULT_DREAM = {
-  dream: "",
-  threeYearGoal: "",
-  oneYearGoal: "",
-  currentReality: "",
-  gap: "",
-};
-
-function makeDefaultFormData(): OnboardingFormData {
-  return {
-    birthday: null,
-    gender: null,
-    selectedRoles: [],
-    roleValues: {} as Record<RoleCategory, string[]>,
-    roleDreams: {} as OnboardingFormData["roleDreams"],
-    visionPhotos: {} as Record<RoleCategory, File | null>,
-    selectedPet: null,
-  };
+interface AIGoalPlanResult {
+  simple_title: string;
+  easy_category: string;
+  easy_category_display?: string;
+  simple_goal: string;
+  steps: { title: string; easy_description: string }[];
+  today_tasks: { title: string; easy_reason: string; estimated_minutes: number }[];
+  pet_message: string;
 }
 
 export default function OnboardingPage() {
   const router = useRouter();
   const supabase = createClient();
-  const [formData, setFormData] = useState<OnboardingFormData>(makeDefaultFormData());
+
   const [currentStep, setCurrentStep] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
 
-  // ─── ステップ定義 ──────────────────────────────────────────
-  // step 0: 誕生日
-  // step 1: 性別
-  // step 2: Role選択
-  // step 3..5: 各RoleのPriority（selectedRoles.length分）
-  // step 3+N..5+N: 各RoleのDream（selectedRoles.length分）
-  // step 3+2N..5+2N: 各RoleのVisionPhoto
-  // step 3+3N: ペット選択
-  // step 3+3N+1: サマリー
-
-  const roleCount = formData.selectedRoles.length;
-  const FIXED_STEPS = 3; // 誕生日・性別・Role選択
-  const PER_ROLE_PHASES = 3; // Priority・Dream・VisionPhoto
-  const TOTAL_STEPS = FIXED_STEPS + roleCount * PER_ROLE_PHASES + 2; // +ペット+サマリー
-
-  function getStepType(): {
-    type: "birthday" | "gender" | "roleSelect" | "priority" | "dream" | "vision" | "pet" | "summary";
-    roleIndex?: number;
-  } {
-    if (currentStep === 0) return { type: "birthday" };
-    if (currentStep === 1) return { type: "gender" };
-    if (currentStep === 2) return { type: "roleSelect" };
-
-    const afterFixed = currentStep - FIXED_STEPS;
-
-    // Priority phase
-    if (afterFixed < roleCount) {
-      return { type: "priority", roleIndex: afterFixed };
-    }
-    // Dream phase
-    if (afterFixed < roleCount * 2) {
-      return { type: "dream", roleIndex: afterFixed - roleCount };
-    }
-    // Vision phase
-    if (afterFixed < roleCount * 3) {
-      return { type: "vision", roleIndex: afterFixed - roleCount * 2 };
-    }
-    // Pet
-    if (afterFixed === roleCount * 3) return { type: "pet" };
-    // Summary
-    return { type: "summary" };
-  }
-
-  const stepInfo = getStepType();
+  // フォームデータ
+  const [birthday, setBirthday] = useState<string | null>(null);
+  const [gender, setGender] = useState<"female" | "male" | "other" | "unanswered" | null>(null);
+  const [goalText, setGoalText] = useState("");
+  const [deadlineType, setDeadlineType] = useState<DeadlineType | null>(null);
+  const [deadlineDate, setDeadlineDate] = useState<string | null>(null);
+  const [aiResult, setAiResult] = useState<AIGoalPlanResult | null>(null);
+  const [selectedPet, setSelectedPet] = useState<PetType | null>(null);
 
   function canProceed(): boolean {
-    const { type, roleIndex } = stepInfo;
-    switch (type) {
-      case "birthday":
-        return !!formData.birthday;
-      case "gender":
-        return !!formData.gender;
-      case "roleSelect":
-        return formData.selectedRoles.length > 0;
-      case "priority":
-        return (formData.roleValues[formData.selectedRoles[roleIndex!]] || []).length === 3;
-      case "dream":
-        return true; // 未入力OK
-      case "vision":
-        return true; // 未設定OK
-      case "pet":
-        return !!formData.selectedPet;
-      case "summary":
-        return true;
+    switch (currentStep) {
+      case 0: return !!birthday;
+      case 1: return !!gender;
+      case 2: return !!goalText;
+      case 3: return !!deadlineType;
+      case 4: return !!aiResult;
+      case 5: return !!selectedPet;
+      case 6: return true;
+      default: return false;
     }
   }
 
@@ -131,61 +75,27 @@ export default function OnboardingPage() {
     if (currentStep > 0) setCurrentStep((s) => s - 1);
   }
 
+  function handleSkip() {
+    if (currentStep === 2) { setGoalText("まだ決まっていない"); setCurrentStep((s) => s + 1); return; }
+    if (currentStep === 3) { setDeadlineType("undecided"); setCurrentStep((s) => s + 1); return; }
+    handleNext();
+  }
+
   async function handleFinish() {
     setIsSaving(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push("/login"); return; }
 
-      // プロフィール更新
       await supabase.from("users_profile").upsert({
         user_id: user.id,
-        birthday: formData.birthday,
-        gender: formData.gender,
-        selected_pet: formData.selectedPet,
+        birthday,
+        gender,
+        selected_pet: selectedPet,
+        display_mode: "simple",
         onboarding_completed: true,
         updated_at: new Date().toISOString(),
       }, { onConflict: "user_id" });
-
-      // Roleを一括保存
-      for (let i = 0; i < formData.selectedRoles.length; i++) {
-        const cat = formData.selectedRoles[i];
-        const dreams = formData.roleDreams[cat] || DEFAULT_DREAM;
-        const values = formData.roleValues[cat] || [];
-
-        const { data: role } = await supabase.from("roles").insert({
-          user_id: user.id,
-          category: cat,
-          title: ROLE_NAMES[cat],
-          values,
-          dream: dreams.dream || null,
-          current_reality: dreams.currentReality || null,
-          gap: dreams.gap || null,
-          three_year_goal: dreams.threeYearGoal || null,
-          one_year_goal: dreams.oneYearGoal || null,
-          display_order: i,
-        }).select().single();
-
-        // Vision Photo upload
-        const photo = formData.visionPhotos[cat];
-        if (role && photo) {
-          const ext = photo.name.split(".").pop();
-          const path = `${user.id}/roles/${role.id}/vision.${ext}`;
-          const { data: uploaded } = await supabase.storage
-            .from("vision-photos")
-            .upload(path, photo, { upsert: true });
-
-          if (uploaded) {
-            const { data: { publicUrl } } = supabase.storage
-              .from("vision-photos")
-              .getPublicUrl(path);
-
-            await supabase.from("roles").update({
-              vision_photo_url: publicUrl,
-            }).eq("id", role.id);
-          }
-        }
-      }
 
       router.push("/home");
     } catch (e) {
@@ -195,19 +105,16 @@ export default function OnboardingPage() {
     }
   }
 
-  function handleSkip() {
-    // ペット以外はスキップ可
-    if (stepInfo.type !== "pet") handleNext();
-  }
+  const petType = selectedPet;
+  const isAIPlanStep = currentStep === 4;
 
-  // ─── レンダリング ──────────────────────────────────────────
-  const currentRole = stepInfo.roleIndex !== undefined
-    ? formData.selectedRoles[stepInfo.roleIndex]
-    : null;
+  const ctaLabel =
+    currentStep === 4 ? (aiResult ? "次へ" : "生成中...") :
+    currentStep === 6 ? (isSaving ? "保存中..." : "はじめる！") :
+    "次へ";
 
-  const ctaLabel = stepInfo.type === "summary"
-    ? (isSaving ? "保存中..." : "はじめる")
-    : "次へ";
+  const showSkip = currentStep === 2 || currentStep === 3;
+  const hideBack = currentStep === 0;
 
   return (
     <OnboardingLayout
@@ -218,96 +125,103 @@ export default function OnboardingPage() {
       ctaLabel={ctaLabel}
       onCTA={handleNext}
       ctaDisabled={!canProceed() || isSaving}
-      hideBack={currentStep === 0}
-      showSkip={
-        stepInfo.type !== "birthday" &&
-        stepInfo.type !== "gender" &&
-        stepInfo.type !== "roleSelect" &&
-        stepInfo.type !== "pet" &&
-        stepInfo.type !== "summary"
-      }
+      hideBack={hideBack}
+      showSkip={showSkip}
     >
       <AnimatePresence mode="wait">
-        {stepInfo.type === "birthday" && (
-          <BirthdayStep
-            key="birthday"
-            value={formData.birthday}
-            onChange={(v) => setFormData((f) => ({ ...f, birthday: v }))}
+        {currentStep === 0 && (
+          <BirthdayStep key="birthday" value={birthday} onChange={setBirthday} />
+        )}
+        {currentStep === 1 && (
+          <GenderStep key="gender" value={gender} onChange={setGender} />
+        )}
+        {currentStep === 2 && (
+          <GoalSelectionStep key="goal" value={goalText} onChange={setGoalText} />
+        )}
+        {currentStep === 3 && (
+          <DeadlineStep
+            key="deadline"
+            deadlineType={deadlineType}
+            deadlineDate={deadlineDate}
+            onChangeType={setDeadlineType}
+            onChangeDate={setDeadlineDate}
           />
         )}
-        {stepInfo.type === "gender" && (
-          <GenderStep
-            key="gender"
-            value={formData.gender}
-            onChange={(v) => setFormData((f) => ({ ...f, gender: v }))}
+        {currentStep === 4 && (
+          <AIGoalPlanStep
+            key="aiplan"
+            goalText={goalText}
+            deadlineType={deadlineType}
+            deadlineDate={deadlineDate}
+            petType={petType}
+            onResult={setAiResult}
           />
         )}
-        {stepInfo.type === "roleSelect" && (
-          <RoleSelectionStep
-            key="roleSelect"
-            selected={formData.selectedRoles}
-            onChange={(roles) =>
-              setFormData((f) => ({ ...f, selectedRoles: roles }))
-            }
-          />
-        )}
-        {stepInfo.type === "priority" && currentRole && (
-          <RolePriorityStep
-            key={`priority-${currentRole}`}
-            roleCategory={currentRole}
-            selected={formData.roleValues[currentRole] || []}
-            onChange={(vals) =>
-              setFormData((f) => ({
-                ...f,
-                roleValues: { ...f.roleValues, [currentRole]: vals },
-              }))
-            }
-          />
-        )}
-        {stepInfo.type === "dream" && currentRole && (
-          <RoleDreamStep
-            key={`dream-${currentRole}`}
-            roleCategory={currentRole}
-            value={formData.roleDreams[currentRole] || DEFAULT_DREAM}
-            onChange={(data) =>
-              setFormData((f) => ({
-                ...f,
-                roleDreams: { ...f.roleDreams, [currentRole]: data },
-              }))
-            }
-          />
-        )}
-        {stepInfo.type === "vision" && currentRole && (
-          <VisionPhotoStep
-            key={`vision-${currentRole}`}
-            roleCategory={currentRole}
-            value={formData.visionPhotos[currentRole] || null}
-            onChange={(file) =>
-              setFormData((f) => ({
-                ...f,
-                visionPhotos: { ...f.visionPhotos, [currentRole]: file },
-              }))
-            }
-          />
-        )}
-        {stepInfo.type === "pet" && (
+        {currentStep === 5 && (
           <PetSelectionStep
             key="pet"
-            value={formData.selectedPet}
-            onChange={(pet) =>
-              setFormData((f) => ({ ...f, selectedPet: pet }))
-            }
+            value={selectedPet}
+            onChange={setSelectedPet}
           />
         )}
-        {stepInfo.type === "summary" && (
-          <OnboardingSummaryStep
-            key="summary"
-            selectedRoles={formData.selectedRoles}
-            roleValues={formData.roleValues}
-            selectedPet={formData.selectedPet}
+        {currentStep === 6 && (
+          <SimpleFinishStep
+            key="finish"
+            aiResult={aiResult}
+            petType={selectedPet}
           />
         )}
       </AnimatePresence>
     </OnboardingLayout>
+  );
+}
+
+// ─── 完了ステップ ──────────────────────────────────────────────
+function SimpleFinishStep({
+  aiResult,
+  petType,
+}: {
+  aiResult: AIGoalPlanResult | null;
+  petType: PetType | null;
+}) {
+  const petEmoji = petType === "dog" ? "🐶" : petType === "robot" ? "🤖" : "🐱";
+
+  return (
+    <div className="space-y-6 pt-4">
+      <div className="text-center space-y-3 pt-4">
+        <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-sage/20 text-4xl">
+          {petEmoji}
+        </div>
+        <h2 className="text-2xl font-medium text-charcoal">
+          今日の小さな一歩を
+          <br />
+          作りました
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          このアプリは、やりたいことを入れると<br />
+          AIが今日やることに分けてくれます。
+        </p>
+      </div>
+
+      {aiResult && aiResult.today_tasks.length > 0 && (
+        <div className="bg-white rounded-3xl p-5 space-y-3">
+          <p className="text-xs font-medium text-muted-foreground">まず今日やること</p>
+          {aiResult.today_tasks.map((task, i) => (
+            <div key={i} className="flex items-center gap-3">
+              <div className="w-5 h-5 rounded-full border-2 border-sage shrink-0" />
+              <p className="text-sm text-charcoal">{task.title}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="bg-sage/10 rounded-3xl p-5">
+        <p className="text-sm text-charcoal leading-relaxed">
+          大きな目標も、1日ずつ小さく進められます。
+          <br />
+          あとから、夢やRoleを詳しく整えることもできます。
+        </p>
+      </div>
+    </div>
   );
 }

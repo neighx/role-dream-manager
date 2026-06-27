@@ -40,6 +40,8 @@ export type DayMode =
   | "recover";
 
 // ─── ユーザープロフィール ───────────────────────────────────────
+export type DisplayMode = "simple" | "detail";
+
 export interface UserProfile {
   id: string;
   user_id: string;
@@ -48,6 +50,7 @@ export interface UserProfile {
   gender: "female" | "male" | "other" | "unanswered" | null;
   life_vision: string | null;
   selected_pet: PetType | null;
+  display_mode: DisplayMode;
   onboarding_completed: boolean;
   created_at: string;
   updated_at: string;

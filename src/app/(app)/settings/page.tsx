@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { LogOut, ChevronRight, Bell, Shield, Palette, Edit3, Check, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { UserProfile, PetType } from "@/types";
+import { UserProfile, PetType, DisplayMode } from "@/types";
 
 const PET_OPTIONS: { type: PetType; name: string; emoji: string }[] = [
   { type: "cat", name: "秘書ネコ", emoji: "🐱" },
@@ -57,6 +57,12 @@ export default function SettingsPage() {
     if (!profile) return;
     await supabase.from("users_profile").update({ selected_pet: pet }).eq("id", profile.id);
     setProfile((p) => p ? { ...p, selected_pet: pet } : p);
+  }
+
+  async function handleDisplayModeChange(mode: DisplayMode) {
+    if (!profile) return;
+    await supabase.from("users_profile").update({ display_mode: mode }).eq("id", profile.id);
+    setProfile((p) => p ? { ...p, display_mode: mode } : p);
   }
 
   async function handleLogout() {
@@ -167,6 +173,40 @@ export default function SettingsPage() {
               </motion.p>
             )}
           </AnimatePresence>
+        </div>
+      </motion.div>
+
+      {/* 表示モード */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.08 }}
+        className="bg-white rounded-3xl p-5 space-y-3"
+      >
+        <div>
+          <h3 className="text-sm font-medium text-charcoal">表示モード</h3>
+          <p className="text-[11px] text-muted-foreground mt-0.5">かんたんモードでは難しい言葉を隠します</p>
+        </div>
+        <div className="flex gap-2">
+          {([
+            { mode: "simple" as DisplayMode, label: "かんたん", desc: "やさしい言葉で表示", emoji: "🌱" },
+            { mode: "detail" as DisplayMode, label: "しっかり", desc: "Role/Dream/Gapを表示", emoji: "📊" },
+          ]).map((opt) => {
+            const isSelected = (profile?.display_mode || "simple") === opt.mode;
+            return (
+              <button
+                key={opt.mode}
+                onClick={() => handleDisplayModeChange(opt.mode)}
+                className={`flex-1 flex flex-col items-center gap-1.5 py-3.5 rounded-2xl border-2 transition-all ${
+                  isSelected ? "border-sage bg-sage/8" : "border-transparent bg-mist"
+                }`}
+              >
+                <span className="text-xl">{opt.emoji}</span>
+                <span className="text-xs font-medium text-charcoal">{opt.label}</span>
+                <span className="text-[10px] text-muted-foreground text-center px-1">{opt.desc}</span>
+              </button>
+            );
+          })}
         </div>
       </motion.div>
 
