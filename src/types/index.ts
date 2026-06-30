@@ -617,3 +617,15 @@ export interface DailyLog {
   updated_at: string;
 }
 
+// ─── Milestone（達成記録）──────────────────────────────────────
+export interface Milestone {
+  id: string;
+  user_id: string;
+  role_id: string | null;
+  category: RoleCategory;
+  title: string;
+  description: string | null;
+  achieved_date: string;
+  created_at: string;
+  updated_at: string;
+}
