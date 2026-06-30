@@ -18,9 +18,10 @@ export function CalendarEventChip({ event, compact = false, onClick, onSelectEve
   const bg = getRoleColor(event.roleCategory, event.color);
   const textColor = getRoleTextColor(event.roleCategory);
   const isDone =
-    (event.type === "task" || event.type === "project_task") &&
-    (event.sourceData as any).status === "done";
+    ((event.type === "task" || event.type === "project_task") && (event.sourceData as any).status === "done") ||
+    (event.type === "goal_task" && (event.sourceData as any).is_completed);
   const isProjectTask = event.type === "project_task";
+  const isGoalTask = event.type === "goal_task";
 
   if (compact) {
     return (
@@ -33,6 +34,7 @@ export function CalendarEventChip({ event, compact = false, onClick, onSelectEve
           <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: textColor }} />
         )}
         <span className="text-[10px] truncate" style={{ color: textColor, textDecoration: isDone ? "line-through" : "none" }}>
+          {isGoalTask && "🏆 "}
           {event.title}
         </span>
       </button>
@@ -51,6 +53,7 @@ export function CalendarEventChip({ event, compact = false, onClick, onSelectEve
           style={{ color: textColor, textDecoration: isDone ? "line-through" : "none" }}
         >
           {isProjectTask && <span className="mr-1">🎯</span>}
+          {isGoalTask && <span className="mr-1">🏆</span>}
           {event.title}
         </p>
         {event.type === "schedule" && !event.isAllDay && (
