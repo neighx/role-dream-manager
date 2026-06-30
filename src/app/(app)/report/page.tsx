@@ -3,7 +3,10 @@ export const dynamic = "force-dynamic";
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { format, startOfWeek, addDays, addWeeks, isToday, isSameDay } from "date-fns";
+import {
+  format, startOfWeek, addDays, addWeeks, isToday, isSameDay,
+  startOfMonth, endOfMonth, addMonths, eachWeekOfInterval,
+} from "date-fns";
 import { ja } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, Plus, X, Trophy } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -33,12 +36,27 @@ const MILESTONE_CATEGORIES: RoleCategory[] = ["creator", "health", "work", "rela
 
 const BAR_MAX_HEIGHT = 130;
 
+function sumActivity(log: DailyLog): number {
+  return ACTIVITY_CONFIG.reduce((sum, a) => sum + ((log[a.key] as number) || 0), 0);
+}
+
+function fmtMinutes(total: number): string {
+  if (total >= 60) return `${Math.floor(total / 60)}h${total % 60 ? total % 60 + "m" : ""}`;
+  return `${total}分`;
+}
+
 // ─── メインページ ─────────────────────────────────────────────
 
 export default function ReportPage() {
   const supabase = createClient();
+  const [viewMode, setViewMode] = useState<"week" | "month">("week");
+
   const [weekOffset, setWeekOffset] = useState(0);
   const [weekLogs, setWeekLogs] = useState<DailyLog[]>([]);
+
+  const [monthOffset, setMonthOffset] = useState(0);
+  const [monthLogs, setMonthLogs] = useState<DailyLog[]>([]);
+
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -53,32 +71,57 @@ export default function ReportPage() {
   const weekStart = startOfWeek(addWeeks(today, weekOffset), { weekStartsOn: 1 });
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
+  const monthStart = startOfMonth(addMonths(today, monthOffset));
+  const monthEnd = endOfMonth(monthStart);
+  const monthWeekStarts = eachWeekOfInterval({ start: monthStart, end: monthEnd }, { weekStartsOn: 1 });
+
+  // 週データ取得
   useEffect(() => {
-    async function load() {
+    async function loadWeek() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const weekStartStr = format(weekStart, "yyyy-MM-dd");
+      const weekEndStr = format(addDays(weekStart, 6), "yyyy-MM-dd");
+      const { data: logs } = await supabase.from("daily_logs").select("*")
+        .eq("user_id", user.id)
+        .gte("date", weekStartStr)
+        .lte("date", weekEndStr);
+      setWeekLogs((logs || []) as DailyLog[]);
+    }
+    loadWeek();
+  }, [weekOffset]);
+
+  // 月データ取得
+  useEffect(() => {
+    async function loadMonth() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const monthStartStr = format(monthStart, "yyyy-MM-dd");
+      const monthEndStr = format(monthEnd, "yyyy-MM-dd");
+      const { data: logs } = await supabase.from("daily_logs").select("*")
+        .eq("user_id", user.id)
+        .gte("date", monthStartStr)
+        .lte("date", monthEndStr);
+      setMonthLogs((logs || []) as DailyLog[]);
+    }
+    loadMonth();
+  }, [monthOffset]);
+
+  // マイルストーン取得（初回のみ・全期間共通の達成記録一覧）
+  useEffect(() => {
+    async function loadMilestones() {
       setIsLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-
-      const weekStartStr = format(weekStart, "yyyy-MM-dd");
-      const weekEndStr = format(addDays(weekStart, 6), "yyyy-MM-dd");
-
-      const [{ data: logs }, { data: ms }] = await Promise.all([
-        supabase.from("daily_logs").select("*")
-          .eq("user_id", user.id)
-          .gte("date", weekStartStr)
-          .lte("date", weekEndStr),
-        supabase.from("milestones").select("*")
-          .eq("user_id", user.id)
-          .order("achieved_date", { ascending: false })
-          .limit(50),
-      ]);
-
-      setWeekLogs((logs || []) as DailyLog[]);
+      const { data: ms } = await supabase.from("milestones").select("*")
+        .eq("user_id", user.id)
+        .order("achieved_date", { ascending: false })
+        .limit(50);
       setMilestones((ms || []) as Milestone[]);
       setIsLoading(false);
     }
-    load();
-  }, [weekOffset]);
+    loadMilestones();
+  }, []);
 
   // ─── マイルストーン追加 ────────────────────────────────────
 
@@ -115,7 +158,7 @@ export default function ReportPage() {
     setMilestones((prev) => prev.filter((m) => m.id !== id));
   }
 
-  // ─── 集計 ──────────────────────────────────────────────────
+  // ─── 週の集計 ──────────────────────────────────────────────
 
   function logForDay(day: Date): DailyLog | undefined {
     return weekLogs.find((l) => isSameDay(new Date(l.date), day));
@@ -138,6 +181,30 @@ export default function ReportPage() {
     total: weekLogs.reduce((sum, log) => sum + ((log[a.key] as number) || 0), 0),
   }));
 
+  // ─── 月の集計 ──────────────────────────────────────────────
+
+  const monthWeeklyTotals = monthWeekStarts.map((ws, i) => {
+    const wsStr = format(ws, "yyyy-MM-dd");
+    const weStr = format(addDays(ws, 6), "yyyy-MM-dd");
+    const total = monthLogs
+      .filter((l) => l.date >= wsStr && l.date <= weStr)
+      .reduce((sum, log) => sum + sumActivity(log), 0);
+    return { index: i, total };
+  });
+
+  const monthWeekMax = Math.max(...monthWeeklyTotals.map((w) => w.total), 60);
+
+  const monthCategoryTotals = ACTIVITY_CONFIG.map((a) => ({
+    ...a,
+    total: monthLogs.reduce((sum, log) => sum + ((log[a.key] as number) || 0), 0),
+  }));
+
+  const monthActiveDays = monthLogs.filter((log) => sumActivity(log) > 0).length;
+  const monthDayCount = monthEnd.getDate();
+  const monthTotalMinutes = monthCategoryTotals.reduce((sum, a) => sum + a.total, 0);
+
+  const topMonthCategory = [...monthCategoryTotals].sort((a, b) => b.total - a.total)[0];
+
   // ─── レンダリング ──────────────────────────────────────────
 
   return (
@@ -152,106 +219,249 @@ export default function ReportPage() {
         <h1 className="text-2xl font-medium text-charcoal">積み上げレポート</h1>
       </motion.div>
 
-      {/* 週ナビゲーション */}
+      {/* 週間／月間 切り替えタブ */}
       <motion.div
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between bg-white rounded-2xl px-3 py-2.5 shadow-sm"
+        className="flex items-center gap-1 bg-white rounded-2xl p-1 shadow-sm"
       >
         <button
-          onClick={() => setWeekOffset((w) => w - 1)}
-          className="p-2 rounded-xl active:bg-mist"
+          onClick={() => setViewMode("week")}
+          className={`flex-1 py-2 rounded-xl text-sm font-medium transition-colors ${
+            viewMode === "week" ? "bg-sage text-white" : "text-muted-foreground"
+          }`}
         >
-          <ChevronLeft className="w-4 h-4 text-muted-foreground" />
+          週間
         </button>
-        <span className="text-sm font-medium text-charcoal">
-          {format(weekStart, "M/d", { locale: ja })} 〜 {format(addDays(weekStart, 6), "M/d", { locale: ja })}
-          {weekOffset === 0 && <span className="ml-1.5 text-[10px] text-sage">今週</span>}
-        </span>
         <button
-          onClick={() => setWeekOffset((w) => Math.min(w + 1, 0))}
-          disabled={weekOffset >= 0}
-          className="p-2 rounded-xl active:bg-mist disabled:opacity-30"
+          onClick={() => setViewMode("month")}
+          className={`flex-1 py-2 rounded-xl text-sm font-medium transition-colors ${
+            viewMode === "month" ? "bg-sage text-white" : "text-muted-foreground"
+          }`}
         >
-          <ChevronRight className="w-4 h-4 text-muted-foreground" />
+          月間
         </button>
       </motion.div>
 
-      {/* 日別積み上げグラフ */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.05 }}
-        className="bg-white rounded-3xl p-5 shadow-sm"
-      >
-        <p className="text-sm font-medium text-charcoal mb-4">1日の積み上げ</p>
+      {viewMode === "week" ? (
+        <>
+          {/* 週ナビゲーション */}
+          <motion.div
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex items-center justify-between bg-white rounded-2xl px-3 py-2.5 shadow-sm"
+          >
+            <button
+              onClick={() => setWeekOffset((w) => w - 1)}
+              className="p-2 rounded-xl active:bg-mist"
+            >
+              <ChevronLeft className="w-4 h-4 text-muted-foreground" />
+            </button>
+            <span className="text-sm font-medium text-charcoal">
+              {format(weekStart, "M/d", { locale: ja })} 〜 {format(addDays(weekStart, 6), "M/d", { locale: ja })}
+              {weekOffset === 0 && <span className="ml-1.5 text-[10px] text-sage">今週</span>}
+            </span>
+            <button
+              onClick={() => setWeekOffset((w) => Math.min(w + 1, 0))}
+              disabled={weekOffset >= 0}
+              className="p-2 rounded-xl active:bg-mist disabled:opacity-30"
+            >
+              <ChevronRight className="w-4 h-4 text-muted-foreground" />
+            </button>
+          </motion.div>
 
-        <div className="flex items-end justify-between gap-2" style={{ height: BAR_MAX_HEIGHT + 30 }}>
-          {dayTotals.map(({ day, segments, total }) => (
-            <div key={day.toISOString()} className="flex-1 flex flex-col items-center gap-1.5">
-              <div
-                className="w-full flex flex-col-reverse rounded-lg overflow-hidden"
-                style={{ height: BAR_MAX_HEIGHT, justifyContent: "flex-start" }}
-              >
-                {total === 0 ? (
-                  <div className="w-full bg-mist rounded-lg" style={{ height: 3 }} />
-                ) : (
-                  segments
-                    .filter((s) => s.minutes > 0)
-                    .map((s) => (
+          {/* 日別積み上げグラフ */}
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 }}
+            className="bg-white rounded-3xl p-5 shadow-sm"
+          >
+            <p className="text-sm font-medium text-charcoal mb-4">1日の積み上げ</p>
+
+            <div className="flex items-end justify-between gap-2" style={{ height: BAR_MAX_HEIGHT + 30 }}>
+              {dayTotals.map(({ day, segments, total }) => (
+                <div key={day.toISOString()} className="flex-1 flex flex-col items-center gap-1.5">
+                  <div
+                    className="w-full flex flex-col-reverse rounded-lg overflow-hidden"
+                    style={{ height: BAR_MAX_HEIGHT, justifyContent: "flex-start" }}
+                  >
+                    {total === 0 ? (
+                      <div className="w-full bg-mist rounded-lg" style={{ height: 3 }} />
+                    ) : (
+                      segments
+                        .filter((s) => s.minutes > 0)
+                        .map((s) => (
+                          <div
+                            key={s.key}
+                            style={{
+                              height: `${(s.minutes / weekMax) * BAR_MAX_HEIGHT}px`,
+                              backgroundColor: s.bg,
+                            }}
+                          />
+                        ))
+                    )}
+                  </div>
+                  <span className={`text-[10px] ${isToday(day) ? "text-sage font-medium" : "text-muted-foreground"}`}>
+                    {format(day, "E", { locale: ja })}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* 凡例 */}
+            <div className="flex flex-wrap gap-x-3 gap-y-1.5 mt-4 pt-4 border-t border-mist">
+              {ACTIVITY_CONFIG.map((a) => (
+                <div key={a.key} className="flex items-center gap-1.5">
+                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: a.bg }} />
+                  <span className="text-[10px] text-muted-foreground">{a.label}</span>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+
+          {/* カテゴリ別週合計 */}
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="grid grid-cols-3 gap-2.5"
+          >
+            {weekCategoryTotals.map((a) => (
+              <div key={a.key} className="bg-white rounded-2xl p-3.5 shadow-sm">
+                <div className="flex items-center gap-1">
+                  <span className="text-sm">{a.emoji}</span>
+                  <span className="text-[11px] text-muted-foreground">{a.label}</span>
+                </div>
+                <p className="text-lg font-medium text-charcoal mt-1">{fmtMinutes(a.total)}</p>
+              </div>
+            ))}
+          </motion.div>
+        </>
+      ) : (
+        <>
+          {/* 月ナビゲーション */}
+          <motion.div
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex items-center justify-between bg-white rounded-2xl px-3 py-2.5 shadow-sm"
+          >
+            <button
+              onClick={() => setMonthOffset((m) => m - 1)}
+              className="p-2 rounded-xl active:bg-mist"
+            >
+              <ChevronLeft className="w-4 h-4 text-muted-foreground" />
+            </button>
+            <span className="text-sm font-medium text-charcoal">
+              {format(monthStart, "yyyy年M月", { locale: ja })}
+              {monthOffset === 0 && <span className="ml-1.5 text-[10px] text-sage">今月</span>}
+            </span>
+            <button
+              onClick={() => setMonthOffset((m) => Math.min(m + 1, 0))}
+              disabled={monthOffset >= 0}
+              className="p-2 rounded-xl active:bg-mist disabled:opacity-30"
+            >
+              <ChevronRight className="w-4 h-4 text-muted-foreground" />
+            </button>
+          </motion.div>
+
+          {/* 今月のあなた サマリーカード */}
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 }}
+            className="bg-charcoal rounded-3xl p-5 shadow-sm text-ivory"
+          >
+            <p className="text-sm font-medium mb-1">{format(monthStart, "M月", { locale: ja })}のあなた</p>
+            <p className="text-[11px] text-ivory/60 mb-4">
+              積み上げ合計 {fmtMinutes(monthTotalMinutes)}
+              {monthTotalMinutes > 0 && topMonthCategory.total > 0 && (
+                <> ・ いちばん積み上げたのは {topMonthCategory.emoji} {topMonthCategory.label}</>
+              )}
+            </p>
+
+            <div className="space-y-2">
+              {monthCategoryTotals
+                .filter((a) => a.total > 0)
+                .sort((a, b) => b.total - a.total)
+                .map((a) => (
+                  <div key={a.key} className="flex items-center gap-2.5">
+                    <span className="text-base w-5">{a.emoji}</span>
+                    <span className="text-xs text-ivory/80 w-9">{a.label}</span>
+                    <div className="flex-1 h-2 rounded-full bg-ivory/15 overflow-hidden">
                       <div
-                        key={s.key}
+                        className="h-full rounded-full"
                         style={{
-                          height: `${(s.minutes / weekMax) * BAR_MAX_HEIGHT}px`,
-                          backgroundColor: s.bg,
+                          width: `${Math.min(100, (a.total / Math.max(monthTotalMinutes, 1)) * 100)}%`,
+                          backgroundColor: a.bg,
                         }}
                       />
-                    ))
-                )}
+                    </div>
+                    <span className="text-xs text-ivory/90 w-12 text-right">{fmtMinutes(a.total)}</span>
+                  </div>
+                ))}
+              {monthCategoryTotals.every((a) => a.total === 0) && (
+                <p className="text-xs text-ivory/50">まだ記録がありません</p>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between mt-4 pt-4 border-t border-ivory/10">
+              <span className="text-[11px] text-ivory/60">活動日数</span>
+              <span className="text-sm font-medium">{monthActiveDays} / {monthDayCount}日</span>
+            </div>
+          </motion.div>
+
+          {/* 週ごとの積み上げ（月内） */}
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="bg-white rounded-3xl p-5 shadow-sm"
+          >
+            <p className="text-sm font-medium text-charcoal mb-4">週ごとの積み上げ</p>
+            <div className="flex items-end justify-between gap-3" style={{ height: BAR_MAX_HEIGHT + 24 }}>
+              {monthWeeklyTotals.map(({ index, total }) => (
+                <div key={index} className="flex-1 flex flex-col items-center gap-1.5">
+                  <div
+                    className="w-full flex flex-col-reverse rounded-lg overflow-hidden"
+                    style={{ height: BAR_MAX_HEIGHT, justifyContent: "flex-start" }}
+                  >
+                    <div
+                      className="w-full bg-sage rounded-lg"
+                      style={{ height: total === 0 ? 3 : `${(total / monthWeekMax) * BAR_MAX_HEIGHT}px` }}
+                    />
+                  </div>
+                  <span className="text-[10px] text-muted-foreground">第{index + 1}週</span>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+
+          {/* カテゴリ別月合計 */}
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+            className="grid grid-cols-3 gap-2.5"
+          >
+            {monthCategoryTotals.map((a) => (
+              <div key={a.key} className="bg-white rounded-2xl p-3.5 shadow-sm">
+                <div className="flex items-center gap-1">
+                  <span className="text-sm">{a.emoji}</span>
+                  <span className="text-[11px] text-muted-foreground">{a.label}</span>
+                </div>
+                <p className="text-lg font-medium text-charcoal mt-1">{fmtMinutes(a.total)}</p>
               </div>
-              <span className={`text-[10px] ${isToday(day) ? "text-sage font-medium" : "text-muted-foreground"}`}>
-                {format(day, "E", { locale: ja })}
-              </span>
-            </div>
-          ))}
-        </div>
-
-        {/* 凡例 */}
-        <div className="flex flex-wrap gap-x-3 gap-y-1.5 mt-4 pt-4 border-t border-mist">
-          {ACTIVITY_CONFIG.map((a) => (
-            <div key={a.key} className="flex items-center gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: a.bg }} />
-              <span className="text-[10px] text-muted-foreground">{a.label}</span>
-            </div>
-          ))}
-        </div>
-      </motion.div>
-
-      {/* カテゴリ別週合計 */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        className="grid grid-cols-3 gap-2.5"
-      >
-        {weekCategoryTotals.map((a) => (
-          <div key={a.key} className="bg-white rounded-2xl p-3.5 shadow-sm">
-            <div className="flex items-center gap-1">
-              <span className="text-sm">{a.emoji}</span>
-              <span className="text-[11px] text-muted-foreground">{a.label}</span>
-            </div>
-            <p className="text-lg font-medium text-charcoal mt-1">
-              {a.total >= 60 ? `${Math.floor(a.total / 60)}h${a.total % 60 ? a.total % 60 + "m" : ""}` : `${a.total}分`}
-            </p>
-          </div>
-        ))}
-      </motion.div>
+            ))}
+          </motion.div>
+        </>
+      )}
 
       {/* マイルストーン（達成記録）*/}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.15 }}
+        transition={{ delay: 0.2 }}
         className="space-y-3"
       >
         <div className="flex items-center justify-between">
