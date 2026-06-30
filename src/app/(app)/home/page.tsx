@@ -460,37 +460,6 @@ export default function HomePage() {
         )}
       </AnimatePresence>
 
-      {/* ②.5 今週の積み上げ */}
-      <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}>
-        <Link href="/report">
-          <div className="bg-white rounded-3xl px-5 py-4 shadow-sm active:scale-[0.98] transition-transform">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-[13px] font-medium text-charcoal">今週の積み上げ</p>
-              <span className="text-[11px] text-sage">詳しく見る →</span>
-            </div>
-            <div className="flex items-end justify-between gap-1.5" style={{ height: 56 }}>
-              {weekDayTotals.map(({ day, total }) => (
-                <div key={day.toISOString()} className="flex-1 flex flex-col items-center gap-1">
-                  <div
-                    className="w-full rounded-md"
-                    style={{
-                      height: Math.max((total / weekChartMax) * 40, total > 0 ? 4 : 2),
-                      backgroundColor: isToday(day) ? "#8FA888" : "#C8DBC6",
-                    }}
-                  />
-                  <span className={`text-[9px] ${isToday(day) ? "text-sage font-medium" : "text-muted-foreground"}`}>
-                    {format(day, "E", { locale: ja })}
-                  </span>
-                </div>
-              ))}
-            </div>
-            <p className="text-[10px] text-muted-foreground mt-2">
-              今週合計 {weekTotalMinutes >= 60 ? `${Math.floor(weekTotalMinutes / 60)}時間${weekTotalMinutes % 60 || ""}` : `${weekTotalMinutes}分`}
-            </p>
-          </div>
-        </Link>
-      </motion.div>
-
       {/* ③ 今日のTODO TOP 3 */}
       <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
         <div className="flex items-center justify-between mb-3">
@@ -828,6 +797,37 @@ export default function HomePage() {
                 <ArrowRight className="w-4 h-4 text-muted-foreground ml-auto shrink-0" />
               </div>
             )}
+          </div>
+        </Link>
+      </motion.div>
+
+      {/* ⑥.5 今週の積み上げ */}
+      <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.27 }}>
+        <Link href="/report">
+          <div className="bg-white rounded-3xl px-5 py-4 shadow-sm active:scale-[0.98] transition-transform">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[13px] font-medium text-charcoal">今週の積み上げ</p>
+              <span className="text-[11px] text-sage">詳しく見る →</span>
+            </div>
+            <div className="flex items-end justify-between gap-1.5" style={{ height: 56 }}>
+              {weekDayTotals.map(({ day, total }) => (
+                <div key={day.toISOString()} className="flex-1 flex flex-col items-center gap-1">
+                  <div
+                    className="w-full rounded-md"
+                    style={{
+                      height: Math.max((total / weekChartMax) * 40, total > 0 ? 4 : 2),
+                      backgroundColor: isToday(day) ? "#8FA888" : "#C8DBC6",
+                    }}
+                  />
+                  <span className={`text-[9px] ${isToday(day) ? "text-sage font-medium" : "text-muted-foreground"}`}>
+                    {format(day, "E", { locale: ja })}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-2">
+              今週合計 {weekTotalMinutes >= 60 ? `${Math.floor(weekTotalMinutes / 60)}時間${weekTotalMinutes % 60 || ""}` : `${weekTotalMinutes}分`}
+            </p>
           </div>
         </Link>
       </motion.div>
