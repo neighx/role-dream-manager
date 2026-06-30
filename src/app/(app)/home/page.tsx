@@ -56,6 +56,16 @@ const EASY_ROLE_LABELS: Record<string, string> = {
   selfcare:     "じぶんを大切に",
 };
 
+type ActivityKey = "exercise_minutes" | "study_minutes" | "english_minutes" | "creator_minutes" | "work_minutes";
+
+const ACTIVITY_CONFIG: { key: ActivityKey; label: string; emoji: string; bg: string }[] = [
+  { key: "exercise_minutes", label: "運動", emoji: "🏃", bg: "#C8DBC6" },
+  { key: "study_minutes",    label: "勉強", emoji: "📚", bg: "#EDD5CC" },
+  { key: "english_minutes",  label: "英語", emoji: "🌍", bg: "#D8CDE8" },
+  { key: "creator_minutes",  label: "制作", emoji: "🎵", bg: "#BDD5EA" },
+  { key: "work_minutes",     label: "仕事", emoji: "💼", bg: "#DCDCDA" },
+];
+
 const MOODS: { value: MoodType; emoji: string; label: string }[] = [
   { value: "great", emoji: "🌟", label: "最高" },
   { value: "good",  emoji: "😊", label: "良い" },
@@ -181,6 +191,7 @@ export default function HomePage() {
   const [todayProjectTasks, setTodayProjectTasks] = useState<ProjectTask[]>([]);
   const [inboxCount, setInboxCount] = useState(0);
   const [todayLog, setTodayLog] = useState<DailyLog | null>(null);
+  const [weekLogs, setWeekLogs] = useState<DailyLog[]>([]);
 
   // ─ UI
   const [showAddForm, setShowAddForm] = useState(false);
@@ -238,6 +249,11 @@ export default function HomePage() {
       const { data: lg } = await supabase.from("daily_logs")
         .select("*").eq("user_id", user.id).eq("date", todayStr).maybeSingle();
       if (lg) setTodayLog(lg as DailyLog);
+
+      const { data: wl } = await supabase.from("daily_logs")
+        .select("*").eq("user_id", user.id)
+        .gte("date", weekStartStr).lte("date", weekEndStr);
+      setWeekLogs((wl || []) as DailyLog[]);
     }
     load();
   }, []);
@@ -266,6 +282,16 @@ export default function HomePage() {
   const modeLabel = checkin?.mode ? MODE_LABELS[checkin.mode] : null;
   const availableHours = checkin?.energy && checkin?.mode ? ENERGY_HOURS[checkin.energy][checkin.mode] : null;
   const contextMessage = buildContextMessage(checkin, allUndone.length, allDone.length, hour);
+
+  const weekDayTotals = weekDays.map((day) => {
+    const log = weekLogs.find((l) => isSameDay(new Date(l.date), day));
+    const total = log
+      ? ACTIVITY_CONFIG.reduce((sum, a) => sum + ((log[a.key] as number) || 0), 0)
+      : 0;
+    return { day, total };
+  });
+  const weekChartMax = Math.max(...weekDayTotals.map((d) => d.total), 60);
+  const weekTotalMinutes = weekDayTotals.reduce((sum, d) => sum + d.total, 0);
 
   // ─── ヘルパー ──────────────────────────────────────────────────
 
@@ -433,6 +459,37 @@ export default function HomePage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ②.5 今週の積み上げ */}
+      <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}>
+        <Link href="/report">
+          <div className="bg-white rounded-3xl px-5 py-4 shadow-sm active:scale-[0.98] transition-transform">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[13px] font-medium text-charcoal">今週の積み上げ</p>
+              <span className="text-[11px] text-sage">詳しく見る →</span>
+            </div>
+            <div className="flex items-end justify-between gap-1.5" style={{ height: 56 }}>
+              {weekDayTotals.map(({ day, total }) => (
+                <div key={day.toISOString()} className="flex-1 flex flex-col items-center gap-1">
+                  <div
+                    className="w-full rounded-md"
+                    style={{
+                      height: Math.max((total / weekChartMax) * 40, total > 0 ? 4 : 2),
+                      backgroundColor: isToday(day) ? "#8FA888" : "#C8DBC6",
+                    }}
+                  />
+                  <span className={`text-[9px] ${isToday(day) ? "text-sage font-medium" : "text-muted-foreground"}`}>
+                    {format(day, "E", { locale: ja })}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-2">
+              今週合計 {weekTotalMinutes >= 60 ? `${Math.floor(weekTotalMinutes / 60)}時間${weekTotalMinutes % 60 || ""}` : `${weekTotalMinutes}分`}
+            </p>
+          </div>
+        </Link>
+      </motion.div>
 
       {/* ③ 今日のTODO TOP 3 */}
       <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
