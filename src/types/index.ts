@@ -383,7 +383,7 @@ export type CalendarViewMode = "month" | "week" | "day" | "today";
 
 export interface CalendarEvent {
   id: string;
-  type: "schedule" | "task" | "project_task";
+  type: "schedule" | "task" | "project_task" | "goal_task";
   title: string;
   start: Date;
   end?: Date;
@@ -391,7 +391,7 @@ export interface CalendarEvent {
   roleId?: string;
   roleCategory?: RoleCategory;
   color?: string;
-  sourceData: Schedule | Task | ProjectTask;
+  sourceData: Schedule | Task | ProjectTask | GoalTask;
 }
 
 // ─── オンボーディングのフォームデータ ────────────────────────
@@ -628,4 +628,39 @@ export interface Milestone {
   achieved_date: string;
   created_at: string;
   updated_at: string;
+}
+
+// ─── Goal（スマートゴール）────────────────────────────────────
+export type GoalCategory = "music_event" | "release" | "collab" | "other";
+
+export const GOAL_CATEGORY_CONFIG: Record<
+  GoalCategory,
+  { label: string; emoji: string; bg: string; text: string }
+> = {
+  music_event: { label: "音楽イベント", emoji: "🎵", bg: "#BDD5EA", text: "#2A5F8F" },
+  release:     { label: "CDリリース",   emoji: "💿", bg: "#EDD5CC", text: "#9B5A4E" },
+  collab:      { label: "コラボ企画",   emoji: "🤝", bg: "#D8CDE8", text: "#6B4E9B" },
+  other:       { label: "その他",       emoji: "✨", bg: "#E8DDD0", text: "#8B6E4E" },
+};
+
+export interface Goal {
+  id: string;
+  user_id: string;
+  title: string;
+  category: GoalCategory;
+  event_date: string;
+  is_completed: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GoalTask {
+  id: string;
+  goal_id: string;
+  user_id: string;
+  title: string;
+  due_date: string | null;
+  is_completed: boolean;
+  sort_order: number;
+  created_at: string;
 }
