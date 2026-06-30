@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { format, startOfWeek, addDays, addWeeks, subWeeks, isToday, isSameDay } from "date-fns";
+import { format, startOfWeek, addDays, addWeeks, isToday, isSameDay } from "date-fns";
 import { ja } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, Plus, X, Trophy } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
