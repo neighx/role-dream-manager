@@ -75,9 +75,11 @@ export default function TodayPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      const todayStr = format(today, "yyyy-MM-dd");
+
       const [{ data: c }, { data: r }, { data: p }] = await Promise.all([
         supabase.from("daily_checkins").select("*").eq("user_id", user.id)
-          .eq("date", format(today, "yyyy-MM-dd")).maybeSingle(),
+          .eq("date", todayStr).maybeSingle(),
         supabase.from("roles").select("*").eq("user_id", user.id).order("display_order"),
         supabase.from("users_profile").select("*").eq("user_id", user.id).single(),
       ]);
@@ -87,14 +89,74 @@ export default function TodayPage() {
       setProfile(p);
       if (c?.selected_role_ids?.length) setSelectedRoleIds(c.selected_role_ids);
 
-      // 今日すでに保存済みか確認
-      if (user) {
-        const { count } = await supabase
+      // 今日のプランが既に生成済みか確認
+      const { data: dp } = await supabase
+        .from("daily_plans")
+        .select("*")
+        .eq("user_id", user.id)
+        .eq("date", todayStr)
+        .maybeSingle();
+
+      if (dp) {
+        // 今日のタスクを読み込んでプランを復元
+        const { data: savedTasks } = await supabase
           .from("tasks")
-          .select("*", { count: "exact", head: true })
+          .select("*")
           .eq("user_id", user.id)
-          .eq("due_date", format(today, "yyyy-MM-dd"));
-        if ((count ?? 0) > 0) setIsSaved(true);
+          .eq("due_date", todayStr)
+          .order("quadrant");
+
+        if (savedTasks && savedTasks.length > 0) {
+          const roleMap = new Map((r || []).map((role: Role) => [role.id, role]));
+
+          const reconstructedTasks: GeneratedTodayTask[] = savedTasks.map((t) => {
+            const role = roleMap.get(t.role_id) as Role | undefined;
+            return {
+              id: t.id,
+              role_id: t.role_id || "",
+              role_category: role?.category || "creator",
+              role_title: role?.title || "",
+              title: t.title,
+              description: t.description || "",
+              purpose: t.purpose || "",
+              gap_addressed: "",
+              long_term_connection: t.purpose || "",
+              today_reason: "",
+              estimated_minutes: t.estimated_minutes || 30,
+              difficulty: 3,
+              importance: 3,
+              urgency: 3,
+              quadrant: (t.quadrant || 2) as 1 | 2 | 3 | 4,
+              energy_adapted: true,
+              stress_adapted: true,
+              generated_by: "claude" as const,
+              ai_generated: true,
+              status: (t.status || "todo") as "todo" | "done" | "skipped",
+            };
+          });
+
+          const reconstructedResult: TodayPlanResult = {
+            tasks: reconstructedTasks,
+            meta: {
+              overall_message: dp.overall_message || "",
+              pet_message: dp.pet_message || "",
+              emotional_summary: dp.emotional_summary || "",
+              available_time_strategy: dp.available_time_strategy || "",
+              not_today: (dp.not_today_json as TodayPlanResult["meta"]["not_today"]) || [],
+              reflection_question: dp.reflection_question || "",
+              ai_generated: dp.ai_generated || false,
+              ai_model: dp.ai_generation_model || undefined,
+            },
+          };
+
+          setPlanResult(reconstructedResult);
+          setPhase("plan");
+          setIsSaved(true);
+          return;
+        }
+
+        // daily_planはあるがtasksなし → 保存済みとしてマーク
+        setIsSaved(true);
       }
     }
     load();
@@ -126,7 +188,6 @@ export default function TodayPage() {
 
       const result = (await res.json()) as TodayPlanResult;
 
-      // フォールバックメッセージを表示
       if (result.meta.fallback_reason) {
         setErrorMsg(result.meta.fallback_reason);
       }
@@ -138,6 +199,9 @@ export default function TodayPage() {
       await supabase.from("daily_checkins")
         .update({ selected_role_ids: selectedRoleIds, pet_message: result.meta.pet_message })
         .eq("id", checkin.id);
+
+      // タスクを自動保存（手動ボタン不要）
+      await autoSaveTasks(result);
     } catch (e) {
       console.error(e);
       setErrorMsg("プランの生成に失敗しました。もう一度お試しください。");
@@ -147,14 +211,19 @@ export default function TodayPage() {
     }
   }
 
-  async function savePlan() {
-    if (!planResult || !checkin) return;
-    setIsSaving(true);
+  // 自動保存（再生成時は既存タスクを削除してから保存）
+  async function autoSaveTasks(result: TodayPlanResult) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    setIsSaving(true);
     const todayStr = format(today, "yyyy-MM-dd");
-    const tasksToSave = planResult.tasks
+
+    // 既存の今日のタスクを削除（再生成時の重複防止）
+    await supabase.from("tasks").delete()
+      .eq("user_id", user.id).eq("due_date", todayStr);
+
+    const tasksToSave = result.tasks
       .filter((t) => t.quadrant !== 4)
       .map((t) => ({
         user_id: user.id,
@@ -167,7 +236,10 @@ export default function TodayPage() {
         status: "todo" as const,
       }));
 
-    await supabase.from("tasks").insert(tasksToSave);
+    if (tasksToSave.length > 0) {
+      await supabase.from("tasks").insert(tasksToSave);
+    }
+
     setIsSaved(true);
     setIsSaving(false);
   }
@@ -376,38 +448,36 @@ export default function TodayPage() {
             animate={{ opacity: 1 }}
             className="space-y-4"
           >
-            {/* 保存バナー */}
-            {isSaved ? (
-              <motion.div
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-sage/10 rounded-2xl px-4 py-3 flex items-center justify-between border border-sage/20"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-sage text-base">✓</span>
-                  <span className="text-sm text-sage font-medium">TODOに保存しました</span>
-                </div>
-                <Link href="/home" className="text-xs text-sage font-medium">
-                  ホームで確認 →
-                </Link>
-              </motion.div>
-            ) : (
-              <motion.button
-                onClick={savePlan}
-                disabled={isSaving}
-                whileTap={{ scale: 0.97 }}
-                className="w-full py-4 rounded-2xl bg-sage text-white font-medium text-sm flex items-center justify-center gap-2 disabled:opacity-50 shadow-sm"
-              >
-                {isSaving ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    保存中...
-                  </>
-                ) : (
-                  <>📋 今日のTODOに保存する</>
-                )}
-              </motion.button>
-            )}
+            {/* 保存ステータスバナー */}
+            <AnimatePresence mode="wait">
+              {isSaving ? (
+                <motion.div
+                  key="saving"
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="bg-mist rounded-2xl px-4 py-3 flex items-center gap-2 border border-border"
+                >
+                  <div className="w-4 h-4 border-2 border-sage/30 border-t-sage rounded-full animate-spin shrink-0" />
+                  <span className="text-sm text-muted-foreground">TODOに保存中...</span>
+                </motion.div>
+              ) : isSaved ? (
+                <motion.div
+                  key="saved"
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-sage/10 rounded-2xl px-4 py-3 flex items-center justify-between border border-sage/20"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-sage text-base">✓</span>
+                    <span className="text-sm text-sage font-medium">TODOに保存しました</span>
+                  </div>
+                  <Link href="/home" className="text-xs text-sage font-medium">
+                    ホームで確認 →
+                  </Link>
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
 
             {/* Overall Message + Pet */}
             <motion.div
