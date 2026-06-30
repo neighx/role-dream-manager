@@ -17,7 +17,7 @@ import { ScheduleEditModal } from "@/components/calendar/ScheduleEditModal";
 import { CalendarEventChip } from "@/components/calendar/CalendarEventChip";
 import {
   CalendarViewMode, CalendarEvent, Schedule, Task, ProjectTask, DailyLog, MoodType,
-  Role, UserProfile, PetType, ROLE_CATEGORY_COLORS,
+  Role, UserProfile, PetType, ROLE_CATEGORY_COLORS, GoalTask,
 } from "@/types";
 import { navigateDate, getViewLabel, getEventsForDay } from "@/lib/calendar/calendarUtils";
 
@@ -53,13 +53,14 @@ function CalendarContent() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const [{ data: r }, { data: s }, { data: t }, { data: p }, { data: pt }, { data: logs }] = await Promise.all([
+    const [{ data: r }, { data: s }, { data: t }, { data: p }, { data: pt }, { data: logs }, { data: gt }] = await Promise.all([
       supabase.from("roles").select("*").eq("user_id", user.id),
       supabase.from("schedules").select("*").eq("user_id", user.id),
       supabase.from("tasks").select("*, roles(category)").eq("user_id", user.id)
         .not("scheduled_at", "is", null),
       supabase.from("users_profile").select("*").eq("user_id", user.id).single(),
       supabase.from("project_tasks").select("*").eq("user_id", user.id).not("due_date", "is", null),
+      supabase.from("goal_tasks").select("*").eq("user_id", user.id).not("due_date", "is", null),
       supabase.from("daily_logs").select("date, mood_after").eq("user_id", user.id),
     ]);
 
@@ -118,7 +119,17 @@ function CalendarContent() {
       };
     });
 
-    setEvents([...scheduleEvents, ...taskEvents, ...projectTaskEvents]);
+    const goalTaskEvents: CalendarEvent[] = (gt || []).map((item: GoalTask) => ({
+      id: `goal-task-${item.id}`,
+      type: "goal_task" as const,
+      title: item.title,
+      start: new Date(item.due_date + "T00:00:00"),
+      isAllDay: true,
+      color: "#FBE4B0",
+      sourceData: item,
+    }));
+
+    setEvents([...scheduleEvents, ...taskEvents, ...projectTaskEvents, ...goalTaskEvents]);
 
     const logMap: Record<string, { mood_after: MoodType | null }> = {};
     (logs || []).forEach((lg: { date: string; mood_after: MoodType | null }) => { logMap[lg.date] = { mood_after: lg.mood_after }; });
