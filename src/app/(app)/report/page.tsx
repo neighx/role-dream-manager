@@ -1,0 +1,422 @@
+"use client";
+export const dynamic = "force-dynamic";
+
+import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { format, startOfWeek, addDays, addWeeks, subWeeks, isToday, isSameDay } from "date-fns";
+import { ja } from "date-fns/locale";
+import { ChevronLeft, ChevronRight, Plus, X, Trophy } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import {
+  DailyLog, Milestone, RoleCategory,
+  ROLE_CATEGORY_COLORS, ROLE_CATEGORY_LABELS,
+} from "@/types";
+
+// ─── 定数 ──────────────────────────────────────────────────────
+
+type ActivityKey = "exercise_minutes" | "study_minutes" | "english_minutes" | "creator_minutes" | "work_minutes";
+
+const ACTIVITY_CONFIG: { key: ActivityKey; label: string; emoji: string; bg: string; text: string }[] = [
+  { key: "exercise_minutes", label: "運動", emoji: "🏃", bg: "#C8DBC6", text: "#3A6B36" },
+  { key: "study_minutes",    label: "勉強", emoji: "📚", bg: "#EDD5CC", text: "#9B5A4E" },
+  { key: "english_minutes",  label: "英語", emoji: "🌍", bg: "#D8CDE8", text: "#6B4E9B" },
+  { key: "creator_minutes",  label: "制作", emoji: "🎵", bg: "#BDD5EA", text: "#2A5F8F" },
+  { key: "work_minutes",     label: "仕事", emoji: "💼", bg: "#DCDCDA", text: "#555553" },
+];
+
+const ROLE_EMOJI: Record<RoleCategory, string> = {
+  creator: "🎵", health: "🌿", work: "💼",
+  relationship: "💛", learning: "🌍", selfcare: "🕯",
+};
+
+const MILESTONE_CATEGORIES: RoleCategory[] = ["creator", "health", "work", "relationship", "learning", "selfcare"];
+
+const BAR_MAX_HEIGHT = 130;
+
+// ─── メインページ ─────────────────────────────────────────────
+
+export default function ReportPage() {
+  const supabase = createClient();
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [weekLogs, setWeekLogs] = useState<DailyLog[]>([]);
+  const [milestones, setMilestones] = useState<Milestone[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newCategory, setNewCategory] = useState<RoleCategory>("creator");
+  const [newTitle, setNewTitle] = useState("");
+  const [newDescription, setNewDescription] = useState("");
+  const [newDate, setNewDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [isSaving, setIsSaving] = useState(false);
+
+  const today = new Date();
+  const weekStart = startOfWeek(addWeeks(today, weekOffset), { weekStartsOn: 1 });
+  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+
+  useEffect(() => {
+    async function load() {
+      setIsLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const weekStartStr = format(weekStart, "yyyy-MM-dd");
+      const weekEndStr = format(addDays(weekStart, 6), "yyyy-MM-dd");
+
+      const [{ data: logs }, { data: ms }] = await Promise.all([
+        supabase.from("daily_logs").select("*")
+          .eq("user_id", user.id)
+          .gte("date", weekStartStr)
+          .lte("date", weekEndStr),
+        supabase.from("milestones").select("*")
+          .eq("user_id", user.id)
+          .order("achieved_date", { ascending: false })
+          .limit(50),
+      ]);
+
+      setWeekLogs((logs || []) as DailyLog[]);
+      setMilestones((ms || []) as Milestone[]);
+      setIsLoading(false);
+    }
+    load();
+  }, [weekOffset]);
+
+  // ─── マイルストーン追加 ────────────────────────────────────
+
+  async function addMilestone() {
+    if (!newTitle.trim()) return;
+    setIsSaving(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data: inserted } = await supabase.from("milestones").insert({
+      user_id: user.id,
+      category: newCategory,
+      title: newTitle.trim(),
+      description: newDescription.trim() || null,
+      achieved_date: newDate,
+    }).select().single();
+
+    if (inserted) {
+      setMilestones((prev) =>
+        [inserted as Milestone, ...prev].sort((a, b) => b.achieved_date.localeCompare(a.achieved_date))
+      );
+    }
+
+    setNewTitle("");
+    setNewDescription("");
+    setNewDate(format(new Date(), "yyyy-MM-dd"));
+    setNewCategory("creator");
+    setShowAddModal(false);
+    setIsSaving(false);
+  }
+
+  async function deleteMilestone(id: string) {
+    await supabase.from("milestones").delete().eq("id", id);
+    setMilestones((prev) => prev.filter((m) => m.id !== id));
+  }
+
+  // ─── 集計 ──────────────────────────────────────────────────
+
+  function logForDay(day: Date): DailyLog | undefined {
+    return weekLogs.find((l) => isSameDay(new Date(l.date), day));
+  }
+
+  const dayTotals = weekDays.map((day) => {
+    const log = logForDay(day);
+    const segments = ACTIVITY_CONFIG.map((a) => ({
+      ...a,
+      minutes: log ? (log[a.key] as number) || 0 : 0,
+    }));
+    const total = segments.reduce((sum, s) => sum + s.minutes, 0);
+    return { day, segments, total };
+  });
+
+  const weekMax = Math.max(...dayTotals.map((d) => d.total), 60);
+
+  const weekCategoryTotals = ACTIVITY_CONFIG.map((a) => ({
+    ...a,
+    total: weekLogs.reduce((sum, log) => sum + ((log[a.key] as number) || 0), 0),
+  }));
+
+  // ─── レンダリング ──────────────────────────────────────────
+
+  return (
+    <div className="px-5 pt-safe pt-5 pb-10 space-y-5">
+
+      {/* ヘッダー */}
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex items-center justify-between"
+      >
+        <h1 className="text-2xl font-medium text-charcoal">積み上げレポート</h1>
+      </motion.div>
+
+      {/* 週ナビゲーション */}
+      <motion.div
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex items-center justify-between bg-white rounded-2xl px-3 py-2.5 shadow-sm"
+      >
+        <button
+          onClick={() => setWeekOffset((w) => w - 1)}
+          className="p-2 rounded-xl active:bg-mist"
+        >
+          <ChevronLeft className="w-4 h-4 text-muted-foreground" />
+        </button>
+        <span className="text-sm font-medium text-charcoal">
+          {format(weekStart, "M/d", { locale: ja })} 〜 {format(addDays(weekStart, 6), "M/d", { locale: ja })}
+          {weekOffset === 0 && <span className="ml-1.5 text-[10px] text-sage">今週</span>}
+        </span>
+        <button
+          onClick={() => setWeekOffset((w) => Math.min(w + 1, 0))}
+          disabled={weekOffset >= 0}
+          className="p-2 rounded-xl active:bg-mist disabled:opacity-30"
+        >
+          <ChevronRight className="w-4 h-4 text-muted-foreground" />
+        </button>
+      </motion.div>
+
+      {/* 日別積み上げグラフ */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.05 }}
+        className="bg-white rounded-3xl p-5 shadow-sm"
+      >
+        <p className="text-sm font-medium text-charcoal mb-4">1日の積み上げ</p>
+
+        <div className="flex items-end justify-between gap-2" style={{ height: BAR_MAX_HEIGHT + 30 }}>
+          {dayTotals.map(({ day, segments, total }) => (
+            <div key={day.toISOString()} className="flex-1 flex flex-col items-center gap-1.5">
+              <div
+                className="w-full flex flex-col-reverse rounded-lg overflow-hidden"
+                style={{ height: BAR_MAX_HEIGHT, justifyContent: "flex-start" }}
+              >
+                {total === 0 ? (
+                  <div className="w-full bg-mist rounded-lg" style={{ height: 3 }} />
+                ) : (
+                  segments
+                    .filter((s) => s.minutes > 0)
+                    .map((s) => (
+                      <div
+                        key={s.key}
+                        style={{
+                          height: `${(s.minutes / weekMax) * BAR_MAX_HEIGHT}px`,
+                          backgroundColor: s.bg,
+                        }}
+                      />
+                    ))
+                )}
+              </div>
+              <span className={`text-[10px] ${isToday(day) ? "text-sage font-medium" : "text-muted-foreground"}`}>
+                {format(day, "E", { locale: ja })}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* 凡例 */}
+        <div className="flex flex-wrap gap-x-3 gap-y-1.5 mt-4 pt-4 border-t border-mist">
+          {ACTIVITY_CONFIG.map((a) => (
+            <div key={a.key} className="flex items-center gap-1.5">
+              <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: a.bg }} />
+              <span className="text-[10px] text-muted-foreground">{a.label}</span>
+            </div>
+          ))}
+        </div>
+      </motion.div>
+
+      {/* カテゴリ別週合計 */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        className="grid grid-cols-3 gap-2.5"
+      >
+        {weekCategoryTotals.map((a) => (
+          <div key={a.key} className="bg-white rounded-2xl p-3.5 shadow-sm">
+            <div className="flex items-center gap-1">
+              <span className="text-sm">{a.emoji}</span>
+              <span className="text-[11px] text-muted-foreground">{a.label}</span>
+            </div>
+            <p className="text-lg font-medium text-charcoal mt-1">
+              {a.total >= 60 ? `${Math.floor(a.total / 60)}h${a.total % 60 ? a.total % 60 + "m" : ""}` : `${a.total}分`}
+            </p>
+          </div>
+        ))}
+      </motion.div>
+
+      {/* マイルストーン（達成記録）*/}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.15 }}
+        className="space-y-3"
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <Trophy className="w-4 h-4 text-sage" />
+            <p className="text-sm font-medium text-charcoal">達成の記録</p>
+          </div>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-1 text-xs text-sage font-medium px-3 py-1.5 rounded-full bg-sage/10"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            記録する
+          </button>
+        </div>
+
+        {milestones.length === 0 ? (
+          <div className="bg-white rounded-3xl p-6 text-center shadow-sm">
+            <p className="text-sm text-muted-foreground">
+              まだ達成記録がありません。<br />
+              「できるようになったこと」を記録してみよう。
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            {milestones.map((m) => {
+              const colors = ROLE_CATEGORY_COLORS[m.category];
+              return (
+                <motion.div
+                  key={m.id}
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-white rounded-2xl p-4 shadow-sm flex items-start gap-3"
+                >
+                  <div
+                    className="w-9 h-9 rounded-xl flex items-center justify-center text-base shrink-0"
+                    style={{ backgroundColor: colors.bg }}
+                  >
+                    {ROLE_EMOJI[m.category]}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span
+                        className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                        style={{ backgroundColor: colors.bg, color: colors.text }}
+                      >
+                        {ROLE_CATEGORY_LABELS[m.category]}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">
+                        {format(new Date(m.achieved_date), "M月d日", { locale: ja })}
+                      </span>
+                    </div>
+                    <p className="text-sm font-medium text-charcoal mt-1">{m.title}</p>
+                    {m.description && (
+                      <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{m.description}</p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => deleteMilestone(m.id)}
+                    className="text-muted-foreground/50 text-xs shrink-0 p-1"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </motion.div>
+              );
+            })}
+          </div>
+        )}
+      </motion.div>
+
+      {/* ─── マイルストーン追加モーダル ─── */}
+      <AnimatePresence>
+        {showAddModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/30 z-50 flex items-end justify-center"
+            onClick={() => setShowAddModal(false)}
+          >
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 28, stiffness: 280 }}
+              className="bg-ivory w-full max-w-md rounded-t-3xl p-5 pb-8 space-y-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-base font-medium text-charcoal">達成を記録する</p>
+                <button onClick={() => setShowAddModal(false)} className="p-1">
+                  <X className="w-5 h-5 text-muted-foreground" />
+                </button>
+              </div>
+
+              {/* カテゴリ選択 */}
+              <div className="grid grid-cols-3 gap-2">
+                {MILESTONE_CATEGORIES.map((cat) => {
+                  const colors = ROLE_CATEGORY_COLORS[cat];
+                  const isSelected = newCategory === cat;
+                  return (
+                    <button
+                      key={cat}
+                      onClick={() => setNewCategory(cat)}
+                      className={`flex flex-col items-center gap-1 py-3 rounded-2xl border-2 transition-all ${
+                        isSelected ? "border-sage" : "border-transparent bg-white"
+                      }`}
+                      style={isSelected ? { backgroundColor: colors.bg + "40" } : {}}
+                    >
+                      <span className="text-lg">{ROLE_EMOJI[cat]}</span>
+                      <span className="text-[10px] text-charcoal">{ROLE_CATEGORY_LABELS[cat]}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* タイトル */}
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">できるようになったこと</label>
+                <input
+                  type="text"
+                  value={newTitle}
+                  onChange={(e) => setNewTitle(e.target.value)}
+                  placeholder="例：エリーゼのためにが弾けるようになった"
+                  className="w-full text-sm text-charcoal bg-white rounded-xl px-3 py-2.5 focus:outline-none"
+                  autoFocus
+                />
+              </div>
+
+              {/* 説明（任意） */}
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">メモ（任意）</label>
+                <textarea
+                  value={newDescription}
+                  onChange={(e) => setNewDescription(e.target.value)}
+                  placeholder="詳細や背景があれば"
+                  className="w-full text-sm text-charcoal bg-white rounded-xl px-3 py-2.5 focus:outline-none resize-none"
+                  rows={2}
+                />
+              </div>
+
+              {/* 日付 */}
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">達成日</label>
+                <input
+                  type="date"
+                  value={newDate}
+                  onChange={(e) => setNewDate(e.target.value)}
+                  max={format(new Date(), "yyyy-MM-dd")}
+                  className="w-full text-sm text-charcoal bg-white rounded-xl px-3 py-2.5 focus:outline-none"
+                />
+              </div>
+
+              <motion.button
+                onClick={addMilestone}
+                disabled={!newTitle.trim() || isSaving}
+                whileTap={{ scale: 0.97 }}
+                className="w-full py-4 rounded-2xl bg-sage text-white font-medium text-sm disabled:opacity-40"
+              >
+                {isSaving ? "保存中..." : "記録する"}
+              </motion.button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
