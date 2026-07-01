@@ -12,7 +12,7 @@ import {
 import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
-  Goal, GoalTask, GoalCategory, GOAL_CATEGORY_CONFIG,
+  Goal, GoalTask,
   GOAL_TIME_HORIZON_CONFIG, GoalTimeHorizon, Role, ROLE_CATEGORY_COLORS,
 } from "@/types";
 
@@ -172,7 +172,7 @@ export default function GoalDetailPage() {
     );
   }
 
-  const config = GOAL_CATEGORY_CONFIG[goal.category as GoalCategory] ?? GOAL_CATEGORY_CONFIG.other;
+  const horizonConfig = GOAL_TIME_HORIZON_CONFIG[goal.time_horizon as GoalTimeHorizon] ?? GOAL_TIME_HORIZON_CONFIG.event;
   const completedCount = tasks.filter((t) => t.is_completed).length;
   const progress = tasks.length > 0 ? Math.round((completedCount / tasks.length) * 100) : 0;
   const daysLeft = differenceInDays(new Date(goal.event_date + "T00:00:00"), new Date());
@@ -217,18 +217,18 @@ export default function GoalDetailPage() {
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-lg">{config.emoji}</span>
+              <span className="text-lg">{horizonConfig.emoji}</span>
               {role && (
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/15 text-ivory/80">
                   {role.title}
                 </span>
               )}
-              {goal.time_horizon && GOAL_TIME_HORIZON_CONFIG[goal.time_horizon as GoalTimeHorizon] && (
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-ivory/60">
-                  {GOAL_TIME_HORIZON_CONFIG[goal.time_horizon as GoalTimeHorizon].emoji}{" "}
-                  {GOAL_TIME_HORIZON_CONFIG[goal.time_horizon as GoalTimeHorizon].label}
-                </span>
-              )}
+              <span
+                className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                style={{ backgroundColor: horizonConfig.bg + "30", color: horizonConfig.bg }}
+              >
+                {horizonConfig.emoji} {horizonConfig.label}
+              </span>
             </div>
             <h1 className="text-xl font-medium leading-snug">{goal.title}</h1>
             <div className="flex items-center gap-1.5 mt-1.5">
