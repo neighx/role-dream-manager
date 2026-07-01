@@ -215,6 +215,7 @@ export default function HomePage() {
   const [aiPlanError, setAiPlanError] = useState<string | null>(null);
   const [showAllTasks, setShowAllTasks] = useState(false);
   const [todayGoalTasks, setTodayGoalTasks] = useState<Array<{ id: string; title: string; is_completed: boolean; goal_title: string; role_id: string | null }>>([]);
+  const [dataLoaded, setDataLoaded] = useState(false);
 
 
   const today = new Date();
@@ -267,6 +268,7 @@ export default function HomePage() {
         .select("*").eq("user_id", user.id)
         .gte("date", weekStartStr).lte("date", weekEndStr);
       setWeekLogs((wl || []) as DailyLog[]);
+      setDataLoaded(true);
     }
     load();
     // ゴール取得
@@ -457,6 +459,25 @@ export default function HomePage() {
 
   return (
     <>
+    {/* ─── ロール未作成 空 state ─── */}
+    {dataLoaded && roles.length === 0 && (
+      <div className="fixed inset-0 bg-ivory z-50 flex flex-col items-center justify-center px-6 text-center">
+        <div className="w-24 h-24 rounded-3xl bg-sage/15 flex items-center justify-center text-5xl mb-6">🌟</div>
+        <h2 className="text-2xl font-medium text-charcoal mb-2">さあ、はじめよう</h2>
+        <p className="text-sm text-muted-foreground mb-8 leading-relaxed">
+          あなたの「Role」を作ると<br />夢から今日のやることが<br />自動でつながります
+        </p>
+        <Link
+          href="/roles/new"
+          className="w-full max-w-xs py-4 rounded-2xl bg-sage text-white font-medium text-sm text-center block mb-3"
+        >
+          最初のRoleを作る
+        </Link>
+        <p className="text-xs text-muted-foreground">
+          例：ミュージシャン、クリエイター、会社員…
+        </p>
+      </div>
+    )}
     <div className="px-5 pt-safe pt-5 pb-10 space-y-4">
 
       {/* ① 日付 + ペット */}
