@@ -646,12 +646,12 @@ export const GOAL_CATEGORY_CONFIG: Record<
 
 export type GoalTimeHorizon = "3year" | "1year" | "3month" | "monthly" | "event";
 
-export const GOAL_TIME_HORIZON_CONFIG: Record<GoalTimeHorizon, { label: string; emoji: string }> = {
-  "3year":   { label: "3年後",   emoji: "🌟" },
-  "1year":   { label: "1年後",   emoji: "🎯" },
-  "3month":  { label: "3ヶ月後", emoji: "📈" },
-  "monthly": { label: "今月",    emoji: "📅" },
-  "event":   { label: "イベント", emoji: "🎪" },
+export const GOAL_TIME_HORIZON_CONFIG: Record<GoalTimeHorizon, { label: string; emoji: string; bg: string; text: string; border: string }> = {
+  "3year":   { label: "3年後",   emoji: "🌟", bg: "#EDE5F5", text: "#7B50B8", border: "#CDB8E8" },
+  "1year":   { label: "1年後",   emoji: "🎯", bg: "#DCE9F5", text: "#3567A0", border: "#A9C8E5" },
+  "3month":  { label: "3ヶ月後", emoji: "📈", bg: "#D5EFE9", text: "#2A7A6E", border: "#A0D5CC" },
+  "monthly": { label: "今月",    emoji: "📅", bg: "#DBF0D5", text: "#3A7832", border: "#A8D9A2" },
+  "event":   { label: "イベント", emoji: "🎪", bg: "#FBE8BE", text: "#8A6408", border: "#E5CC80" },
 };
 
 export interface Goal {
