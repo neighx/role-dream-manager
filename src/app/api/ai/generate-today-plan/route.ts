@@ -5,7 +5,7 @@ import { isAIConfigured } from "@/lib/ai/aiClient";
 import { generateTodayPlanWithAI } from "@/lib/ai/generateTodayPlanWithAI";
 import { TODAY_PLAN_PROMPT_VERSION } from "@/lib/ai/prompts/todayPlanPrompt";
 import { ruleBasedTodayPlan } from "@/lib/plans/ruleBasedTodayPlan";
-import { TodayPlanResult, RegenerationMode, Role, Task, Schedule, DailyLog, Goal } from "@/types";
+import { TodayPlanResult, RegenerationMode, Role, Task, Schedule, DailyLog, Goal, DailyCheckin, EnergyLevel, StressCause, DayMode } from "@/types";
 
 export const dynamic = "force-dynamic";
 
