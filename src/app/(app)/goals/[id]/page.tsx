@@ -48,6 +48,9 @@ export default function GoalDetailPage() {
 
   // ─ Add task
   const [showAddTask, setShowAddTask] = useState(false);
+
+  // ─ Celebration
+  const [showCelebration, setShowCelebration] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskDate, setNewTaskDate] = useState("");
   const [isAddingTask, setIsAddingTask] = useState(false);
@@ -80,8 +83,12 @@ export default function GoalDetailPage() {
   // ─── Toggle task ──────────────────────────────────────────────
   async function toggleTask(task: GoalTask) {
     const next = !task.is_completed;
-    setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, is_completed: next } : t));
+    const updated = tasks.map((t) => t.id === task.id ? { ...t, is_completed: next } : t);
+    setTasks(updated);
     await supabase.from("goal_tasks").update({ is_completed: next }).eq("id", task.id);
+    if (next && updated.length > 0 && updated.every(t => t.is_completed)) {
+      setShowCelebration(true);
+    }
   }
 
   // ─── Goal edit ────────────────────────────────────────────────
@@ -113,6 +120,13 @@ export default function GoalDetailPage() {
     setIsDeletingGoal(true);
     await supabase.from("goal_tasks").delete().eq("goal_id", goalId);
     await supabase.from("goals").delete().eq("id", goalId);
+    router.push("/goals");
+  }
+
+  // ─── Mark goal as complete ───────────────────────────────────
+  async function markGoalComplete() {
+    if (!goal) return;
+    await supabase.from("goals").update({ is_completed: true }).eq("id", goalId);
     router.push("/goals");
   }
 
@@ -628,6 +642,52 @@ export default function GoalDetailPage() {
         </motion.div>
       )}
     </AnimatePresence>
+      {/* 達成セレブレーション */}
+      <AnimatePresence>
+        {showCelebration && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-charcoal/85 z-50 flex flex-col items-center justify-center px-6 text-center"
+          >
+            <motion.div
+              initial={{ scale: 0.5, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: "spring", damping: 14, stiffness: 200 }}
+              className="w-full max-w-xs"
+            >
+              <motion.p
+                initial={{ y: -20 }}
+                animate={{ y: 0 }}
+                className="text-7xl mb-5"
+              >🎉</motion.p>
+              <h2 className="text-2xl font-medium text-ivory mb-2">全タスク完了！</h2>
+              <p className="text-sm text-ivory/70 mb-8">{goal?.title}</p>
+              <div className="space-y-3">
+                <button
+                  onClick={markGoalComplete}
+                  className="w-full py-4 rounded-2xl bg-sage text-white text-sm font-medium"
+                >
+                  ゴールを達成済みにする ✓
+                </button>
+                <button
+                  onClick={() => router.push("/goals/new")}
+                  className="w-full py-3 rounded-2xl border border-ivory/30 text-ivory text-sm"
+                >
+                  次のゴールを作る →
+                </button>
+                <button
+                  onClick={() => setShowCelebration(false)}
+                  className="text-ivory/40 text-sm mt-2"
+                >
+                  もう少し調整する
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   );
 }
