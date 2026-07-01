@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { ArrowLeft, Sparkles, Check, Pencil } from "lucide-react";
+import { ArrowLeft, Sparkles, Check, Pencil, Trash2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Project, ProjectTask, AIProjectTask, AIProjectBreakdown } from "@/types";
 import { ProjectTimeline } from "@/components/projects/ProjectTimeline";
@@ -53,6 +53,9 @@ export default function ProjectDetailPage({
   const [isSaving, setIsSaving] = useState(false);
   const [breakdown, setBreakdown] = useState<AIProjectBreakdown | null>(null);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [titleInput, setTitleInput] = useState("");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // プロジェクト情報編集
   const [isEditingInfo, setIsEditingInfo] = useState(false);
@@ -105,6 +108,20 @@ export default function ProjectDetailPage({
     await supabase.from("projects").update(updates).eq("id", project.id);
     setProject((prev) => (prev ? { ...prev, ...updates } : prev));
     setIsEditingInfo(false);
+  }
+
+  async function saveTitle() {
+    if (!project || !titleInput.trim()) return;
+    await supabase.from("projects").update({ title: titleInput.trim() }).eq("id", project.id);
+    setProject((prev) => (prev ? { ...prev, title: titleInput.trim() } : prev));
+    setIsEditingTitle(false);
+  }
+
+  async function deleteProject() {
+    if (!project) return;
+    await supabase.from("project_tasks").delete().eq("project_id", project.id);
+    await supabase.from("projects").delete().eq("id", project.id);
+    router.back();
   }
 
   async function generateBreakdown() {
@@ -258,11 +275,68 @@ export default function ProjectDetailPage({
         </button>
         <div className="flex-1 min-w-0">
           <p className="text-xs text-muted-foreground">{STATUS_LABELS[project.status]}</p>
-          <h1 className="font-medium text-charcoal text-base leading-tight truncate">
-            {project.title}
-          </h1>
+          {isEditingTitle ? (
+            <div className="flex items-center gap-2 mt-0.5">
+              <input
+                type="text"
+                value={titleInput}
+                onChange={(e) => setTitleInput(e.target.value)}
+                className="flex-1 text-sm text-charcoal bg-mist rounded-xl px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-sage/30"
+                autoFocus
+                onKeyDown={(e) => { if (e.key === "Enter") saveTitle(); if (e.key === "Escape") setIsEditingTitle(false); }}
+              />
+              <button onClick={saveTitle} className="w-7 h-7 rounded-lg bg-sage flex items-center justify-center">
+                <Check className="w-3.5 h-3.5 text-white" />
+              </button>
+              <button onClick={() => setIsEditingTitle(false)} className="w-7 h-7 rounded-lg bg-mist flex items-center justify-center">
+                <X className="w-3.5 h-3.5 text-charcoal" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => { setTitleInput(project.title); setIsEditingTitle(true); }}
+              className="flex items-center gap-1.5 group w-full"
+            >
+              <h1 className="font-medium text-charcoal text-base leading-tight truncate text-left">
+                {project.title}
+              </h1>
+              <Pencil className="w-3 h-3 text-muted-foreground/50 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+            </button>
+          )}
         </div>
+        <button
+          onClick={() => setShowDeleteConfirm(true)}
+          className="w-8 h-8 rounded-xl bg-mist flex items-center justify-center shrink-0"
+        >
+          <Trash2 className="w-4 h-4 text-red-400" />
+        </button>
       </div>
+
+      {/* 削除確認 */}
+      {showDeleteConfirm && (
+        <motion.div
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-3"
+        >
+          <p className="text-sm font-medium text-red-700">このプロジェクトを削除しますか？</p>
+          <p className="text-xs text-red-500">タスクも含めてすべて削除されます。この操作は元に戻せません。</p>
+          <div className="flex gap-2">
+            <button
+              onClick={deleteProject}
+              className="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-sm font-medium"
+            >
+              削除する
+            </button>
+            <button
+              onClick={() => setShowDeleteConfirm(false)}
+              className="flex-1 py-2.5 rounded-xl border border-border text-sm text-muted-foreground"
+            >
+              キャンセル
+            </button>
+          </div>
+        </motion.div>
+      )}
 
       {/* 締切・進捗 */}
       <div className="bg-white rounded-2xl p-4 space-y-3 shadow-sm">
