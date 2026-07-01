@@ -5,6 +5,7 @@ import { useState, useEffect, use } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { format } from "date-fns";
 import { ChevronLeft, Calendar, Users, MessageSquare, ImagePlus, Sparkles, Check, RefreshCw, Trash2, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Role, Task, ROLE_CATEGORY_COLORS, Project, Goal, GOAL_TIME_HORIZON_CONFIG, GoalTimeHorizon } from "@/types";
@@ -45,7 +46,7 @@ export default function RoleDetailPage({ params }: { params: Promise<{ id: strin
   const [isGenerating, setIsGenerating] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<Record<string, string> | null>(null);
   const [isSavingAll, setIsSavingAll] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "projects" | "goals">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "projects" | "goals" | "dreammap">("overview");
   const [roleGoals, setRoleGoals] = useState<Goal[]>([]);
   const [showProjectForm, setShowProjectForm] = useState(false);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
@@ -310,6 +311,81 @@ export default function RoleDetailPage({ params }: { params: Promise<{ id: strin
                 );
               })
             )}
+          </div>
+        )}
+
+        {/* 夢MAPタブ */}
+        {activeTab === "dreammap" && (
+          <div className="space-y-4">
+            {/* Dream */}
+            {role.dream && (
+              <div className="bg-white rounded-3xl p-5 shadow-sm">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-xl">⭐</span>
+                  <p className="text-sm font-medium text-charcoal">Dream（究極の夢）</p>
+                </div>
+                <p className="text-sm text-charcoal leading-relaxed">{role.dream}</p>
+              </div>
+            )}
+
+            {/* 逆算カスケード */}
+            <div className="space-y-0">
+              {[
+                { key: "three_year_goal" as keyof Role, label: "3年後", emoji: "🗓", horizon: "3year" as GoalTimeHorizon },
+                { key: "one_year_goal" as keyof Role, label: "1年後", emoji: "📅", horizon: "1year" as GoalTimeHorizon },
+                { key: "three_month_goal" as keyof Role, label: "3ヶ月後", emoji: "🌱", horizon: "3month" as GoalTimeHorizon },
+                { key: "monthly_goal" as keyof Role, label: "今月", emoji: "📆", horizon: "monthly" as GoalTimeHorizon },
+                { key: "weekly_goal" as keyof Role, label: "今週", emoji: "📝", horizon: undefined },
+              ].map((item, i) => {
+                const textValue = role[item.key] as string | null;
+                const linkedGoals = item.horizon ? roleGoals.filter(g => g.time_horizon === item.horizon) : [];
+                if (!textValue && linkedGoals.length === 0) return null;
+                return (
+                  <div key={item.key} className="flex gap-3">
+                    <div className="flex flex-col items-center">
+                      <div
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0 mt-0.5"
+                        style={{ backgroundColor: colors.bg }}
+                      >
+                        {item.emoji}
+                      </div>
+                      {i < 4 && (
+                        <div className="w-0.5 flex-1 mt-1 mb-1" style={{ backgroundColor: colors.border + "50", minHeight: "20px" }} />
+                      )}
+                    </div>
+                    <div className="flex-1 pb-4">
+                      <p className="text-xs font-medium text-muted-foreground mb-1.5">{item.label}</p>
+                      {textValue && (
+                        <p className="text-sm text-charcoal leading-relaxed mb-2">{textValue}</p>
+                      )}
+                      {linkedGoals.map(g => {
+                        const daysLeft = Math.ceil((new Date(g.event_date + "T00:00:00").getTime() - Date.now()) / 86400000);
+                        return (
+                          <a key={g.id} href={`/goals/${g.id}`} className="block bg-white rounded-xl px-3 py-2 shadow-sm mb-1.5 active:scale-[0.98] transition-transform">
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs font-medium text-charcoal truncate flex-1">{g.title}</p>
+                              <span className={`text-[10px] ml-2 shrink-0 ${daysLeft <= 7 ? "text-red-500 font-medium" : "text-muted-foreground"}`}>
+                                {daysLeft < 0 ? "終了" : daysLeft === 0 ? "今日！" : `あと${daysLeft}日`}
+                              </span>
+                            </div>
+                          </a>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* ゴール追加ボタン */}
+            <a
+              href={`/goals`}
+              className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl border-2 border-dashed text-sm"
+              style={{ borderColor: colors.border + "60", color: colors.text }}
+            >
+              <span>＋</span>
+              <span>このRoleにゴールを追加</span>
+            </a>
           </div>
         )}
 
@@ -594,8 +670,8 @@ export default function RoleDetailPage({ params }: { params: Promise<{ id: strin
         >
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-medium text-charcoal">TODO</h3>
-            <Link href="/today" className="text-xs text-sage">
-              Today's Planで管理
+            <Link href="/goals" className="text-xs text-sage">
+              ゴールで管理
             </Link>
           </div>
           {tasks.filter((t) => t.status !== "done").length === 0 ? (
