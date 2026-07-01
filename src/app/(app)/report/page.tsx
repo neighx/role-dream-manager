@@ -58,6 +58,7 @@ export default function ReportPage() {
   const [monthLogs, setMonthLogs] = useState<DailyLog[]>([]);
 
   const [milestones, setMilestones] = useState<Milestone[]>([]);
+  const [monthGoals, setMonthGoals] = useState<(Goal & { completedTaskCount: number; totalTaskCount: number })[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const [showAddModal, setShowAddModal] = useState(false);
@@ -122,6 +123,33 @@ export default function ReportPage() {
     }
     loadMilestones();
   }, []);
+
+  // ─── 月次ゴール達成状況 ──────────────────────────────────────
+  useEffect(() => {
+    async function loadMonthGoals() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const now = new Date();
+      const monthStart = format(new Date(now.getFullYear(), now.getMonth() - monthOffset, 1), "yyyy-MM-dd");
+      const monthEnd = format(new Date(now.getFullYear(), now.getMonth() - monthOffset + 1, 0), "yyyy-MM-dd");
+      const { data: gs } = await supabase
+        .from("goals")
+        .select("*, goal_tasks(id, is_completed)")
+        .eq("user_id", user.id)
+        .gte("event_date", monthStart)
+        .lte("event_date", monthEnd)
+        .order("event_date");
+      setMonthGoals(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (gs || []).map((g: any) => ({
+          ...g,
+          totalTaskCount: (g.goal_tasks || []).length,
+          completedTaskCount: (g.goal_tasks || []).filter((t: any) => t.is_completed).length,
+        }))
+      );
+    }
+    loadMonthGoals();
+  }, [monthOffset]);
 
   // ─── マイルストーン追加 ────────────────────────────────────
 
@@ -464,6 +492,29 @@ export default function ReportPage() {
         transition={{ delay: 0.2 }}
         className="space-y-3"
       >
+        {/* ゴール達成状況 */}
+        {monthGoals.length > 0 && (
+          <div className="bg-white rounded-3xl p-5 shadow-sm space-y-3">
+            <p className="text-sm font-medium text-charcoal">🎯 今月のゴール</p>
+            {monthGoals.map((g) => {
+              const pct = g.totalTaskCount > 0 ? Math.round((g.completedTaskCount / g.totalTaskCount) * 100) : 0;
+              return (
+                <a key={g.id} href={`/goals/${g.id}`} className="block">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-xs font-medium text-charcoal truncate flex-1 mr-2">{g.title}</p>
+                    <span className={`text-xs font-bold shrink-0 ${g.is_completed ? "text-sage" : pct >= 80 ? "text-amber-600" : "text-muted-foreground"}`}>
+                      {g.is_completed ? "✓ 達成" : `${pct}%`}
+                    </span>
+                  </div>
+                  <div className="h-1.5 bg-mist rounded-full overflow-hidden">
+                    <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: g.is_completed ? "#9DBF98" : "#F5C842" }} />
+                  </div>
+                </a>
+              );
+            })}
+          </div>
+        )}
+
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
             <Trophy className="w-4 h-4 text-sage" />
