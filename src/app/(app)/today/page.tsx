@@ -244,18 +244,22 @@ export default function TodayPage() {
     setIsSaving(false);
   }
 
-  function toggleTask(taskId: string) {
+  async function toggleTask(taskId: string) {
+    if (!planResult) return;
+    const task = planResult.tasks.find((t) => t.id === taskId);
+    if (!task) return;
+    const newStatus: "todo" | "done" = task.status === "done" ? "todo" : "done";
     setPlanResult((prev) => {
       if (!prev) return prev;
       return {
         ...prev,
         tasks: prev.tasks.map((t) =>
-          t.id === taskId
-            ? { ...t, status: t.status === "done" ? "todo" : "done" }
-            : t
+          t.id === taskId ? { ...t, status: newStatus } : t
         ),
       };
     });
+    // DB に反映（リロード後もチェック状態が保持される）
+    await supabase.from("tasks").update({ status: newStatus }).eq("id", taskId);
   }
 
   // ─── チェックイン未完了 ────────────────────────────────────
