@@ -136,6 +136,7 @@ export default function GoalsPage() {
           <Target className="w-5 h-5 text-sage" />
           <h1 className="text-2xl font-medium text-charcoal">ゴール</h1>
         </div>
+        <p className="text-xs text-muted-foreground mt-1">特定の日に起きるイベント（ライブ、リリース、発表）</p>
         <button
           onClick={() => setShowModal(true)}
           className="flex items-center gap-1.5 text-sm text-sage font-medium px-4 py-2 rounded-2xl bg-sage/10"
@@ -263,7 +264,10 @@ export default function GoalsPage() {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between">
-                <p className="text-base font-medium text-charcoal">ゴールを登録する</p>
+                <div>
+                  <p className="text-base font-medium text-charcoal">ゴールを登録する</p>
+                  <p className="text-[11px] text-muted-foreground">特定の日に起きるイベント（ライブ、リリース、発表）</p>
+                </div>
                 <button onClick={() => !isGenerating && setShowModal(false)} className="p-1">
                   <X className="w-5 h-5 text-muted-foreground" />
                 </button>
