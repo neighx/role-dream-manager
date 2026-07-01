@@ -4,10 +4,10 @@ import type { Role } from "@/types";
 import type { AIMessage } from "../providers/base";
 
 export const QUICK_CAPTURE_PROMPT_VERSION =
-  process.env.QUICK_CAPTURE_PROMPT_VERSION ?? "v1";
+  process.env.QUICK_CAPTURE_PROMPT_VERSION ?? "v2";
 
 const OUTPUT_SCHEMA = `{
-  "type": "task | schedule | idea | inbox",
+  "type": "task | schedule | idea | inbox | message_draft | sns_post",
   "title": "具体的なタイトル（40文字以内）",
   "description": "補足（省略可）",
   "suggested_role_id": "ロールのID（どのRoleにも当てはまらなければ null）",
@@ -25,6 +25,7 @@ const OUTPUT_SCHEMA = `{
   "suggested_duration_minutes": 60,
   "confidence": "low | medium | high",
   "save_destination": "task | schedule | today_plan | inbox",
+  "generated_content": "メッセージ/SNS投稿の本文テキスト（message_draft・sns_postのみ。それ以外はこのフィールドを含めない）",
   "reasoning": "この分類の理由（50文字以内）"
 }`;
 
@@ -44,17 +45,31 @@ CLASSIFICATION RULES:
 - type="schedule": event with a specific date/time ("明日3時に", "今週金曜に")
 - type="idea": reflection, insight, memo, thought (no clear action)
 - type="inbox": ambiguous — you cannot confidently classify it
+- type="message_draft": user wants to draft a message/LINE/email to someone
+  Signals: 「〇〇に連絡」「〇〇にメッセージ送って」「〇〇にLINE」「〇〇にメール」
+  → Set generated_content to the actual message text in Japanese.
+    Write a warm, natural message. Use【角括弧】for unknown info (e.g.,【日時】【場所】).
+    Keep it concise (3–6 lines). Match the purpose inferred from the input.
+  → save_destination = "inbox"
+- type="sns_post": user wants to create an SNS/social media announcement
+  Signals: 「SNSで告知」「ツイートして」「Instagram投稿」「告知文作って」
+  → Set generated_content to the actual post text in Japanese.
+    Include relevant emoji and 2–4 hashtags. Keep under 140 characters.
+    Tone: exciting, inviting, artist-style.
+  → save_destination = "inbox"
 
 SAVE DESTINATION:
 - "task": clear action item → add to task list
 - "schedule": event with date/time → add to calendar
 - "today_plan": user explicitly says "今日やりたい" or "今日やる" → add to today's plan
-- "inbox": low confidence OR user says "あとで" → Inbox for later review
+- "inbox": low confidence, generation type, OR user says "あとで" → Inbox for later review
 
 ROLE INFERENCE:
 Match the content against the user's Role list (provided below).
 Use role_id and role_name from that list exactly.
 If nothing matches, set both to null.
+
+IMPORTANT: For message_draft and sns_post, generated_content is REQUIRED and must be the actual text content (not a description of it). Write it in Japanese as if you are the user sending it.
 
 Output ONLY valid JSON — no markdown, no explanations.
 
