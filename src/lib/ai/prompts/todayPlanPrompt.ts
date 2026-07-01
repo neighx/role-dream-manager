@@ -81,18 +81,19 @@ export interface TodayPlanPromptInput {
   weekSchedules: Schedule[];
   recentDailyLogs?: DailyLog[];
   regenerationMode?: string;
+  upcomingGoals?: Array<{ id: string; title: string; event_date: string; time_horizon: string; category: string }>;
 }
 
 export function buildTodayPlanMessages(input: TodayPlanPromptInput): AIMessage[] {
   const {
     date, profile, checkin, selectedRoles,
-    recentDoneTasks, pendingTasks, weekSchedules, recentDailyLogs, regenerationMode,
+    recentDoneTasks, pendingTasks, weekSchedules, recentDailyLogs, regenerationMode, upcomingGoals,
   } = input;
 
   const systemPrompt = buildSystemPrompt();
   const userPrompt = buildUserPrompt({
     date, profile, checkin, selectedRoles,
-    recentDoneTasks, pendingTasks, weekSchedules, recentDailyLogs, regenerationMode,
+    recentDoneTasks, pendingTasks, weekSchedules, recentDailyLogs, regenerationMode, upcomingGoals,
   });
 
   return [
@@ -131,7 +132,7 @@ const MOOD_LABEL_MAP: Record<string, string> = {
 function buildUserPrompt(input: TodayPlanPromptInput): string {
   const {
     date, profile, checkin, selectedRoles,
-    recentDoneTasks, pendingTasks, weekSchedules, recentDailyLogs, regenerationMode,
+    recentDoneTasks, pendingTasks, weekSchedules, recentDailyLogs, regenerationMode, upcomingGoals,
   } = input;
 
   const petType = (profile.selected_pet || "cat") as PetType;
