@@ -17,7 +17,7 @@ import { ScheduleEditModal } from "@/components/calendar/ScheduleEditModal";
 import { CalendarEventChip } from "@/components/calendar/CalendarEventChip";
 import {
   CalendarViewMode, CalendarEvent, Schedule, Task, ProjectTask, DailyLog, MoodType,
-  Role, UserProfile, PetType, ROLE_CATEGORY_COLORS, GoalTask,
+  Role, UserProfile, PetType, ROLE_CATEGORY_COLORS, GoalTask, Goal,
 } from "@/types";
 import { navigateDate, getViewLabel, getEventsForDay } from "@/lib/calendar/calendarUtils";
 
@@ -53,7 +53,7 @@ function CalendarContent() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const [{ data: r }, { data: s }, { data: t }, { data: p }, { data: pt }, { data: logs }, { data: gt }] = await Promise.all([
+    const [{ data: r }, { data: s }, { data: t }, { data: p }, { data: pt }, { data: logs }, { data: gt }, { data: goalEvts }] = await Promise.all([
       supabase.from("roles").select("*").eq("user_id", user.id),
       supabase.from("schedules").select("*").eq("user_id", user.id),
       supabase.from("tasks").select("*, roles(category)").eq("user_id", user.id)
@@ -62,6 +62,7 @@ function CalendarContent() {
       supabase.from("project_tasks").select("*").eq("user_id", user.id).not("due_date", "is", null),
       supabase.from("daily_logs").select("date, mood_after").eq("user_id", user.id),
       supabase.from("goal_tasks").select("*").eq("user_id", user.id).not("due_date", "is", null),
+      supabase.from("goals").select("id,title,event_date,role_id").eq("user_id", user.id).eq("is_completed", false).not("event_date", "is", null),
     ]);
 
     setRoles(r || []);
@@ -129,7 +130,18 @@ function CalendarContent() {
       sourceData: item,
     }));
 
-    setEvents([...scheduleEvents, ...taskEvents, ...projectTaskEvents, ...goalTaskEvents]);
+    const goalDateEvents: CalendarEvent[] = (goalEvts || []).map((g: Goal) => ({
+      id: `goal-${g.id}`,
+      type: "goal_task" as const,
+      title: `🎯 ${g.title}`,
+      start: new Date(g.event_date + "T00:00:00"),
+      isAllDay: true,
+      color: "#C8DBC6",
+      roleId: g.role_id || undefined,
+      sourceData: g as any,
+    }));
+
+    setEvents([...scheduleEvents, ...taskEvents, ...projectTaskEvents, ...goalTaskEvents, ...goalDateEvents]);
 
     const logMap: Record<string, { mood_after: MoodType | null }> = {};
     (logs || []).forEach((lg: { date: string; mood_after: MoodType | null }) => { logMap[lg.date] = { mood_after: lg.mood_after }; });
