@@ -317,7 +317,7 @@ export type QuickCaptureInputType = "text" | "voice";
 export type QuickCaptureSaveDestination = "task" | "schedule" | "today_plan" | "inbox";
 
 export interface ParsedQuickCapture {
-  type: "task" | "schedule" | "idea" | "inbox";
+  type: "task" | "schedule" | "idea" | "inbox" | "message_draft" | "sns_post";
   title: string;
   description?: string;
   suggested_role_id: string | null;
@@ -335,6 +335,7 @@ export interface ParsedQuickCapture {
   suggested_duration_minutes?: number;
   confidence: "low" | "medium" | "high";
   save_destination: QuickCaptureSaveDestination;
+  generated_content?: string;
   reasoning?: string;
   ai_generated: boolean;
   ai_model?: string;
