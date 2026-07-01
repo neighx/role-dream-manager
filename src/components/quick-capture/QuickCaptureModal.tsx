@@ -13,12 +13,18 @@ import {
   Lightbulb,
   RotateCcw,
   Check,
+  Target,
+  ChevronLeft,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { format, addDays } from "date-fns";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import type { ParsedQuickCapture, QuickCaptureSaveDestination } from "@/types";
-import { ROLE_CATEGORY_COLORS } from "@/types";
+import { ROLE_CATEGORY_COLORS, GoalCategory, GOAL_CATEGORY_CONFIG } from "@/types";
 
 type Phase = "input" | "analyzing" | "review" | "saving" | "done";
+type AppMode = "capture" | "goal";
 
 const DESTINATION_CONFIG: Record<
   QuickCaptureSaveDestination,
@@ -58,6 +64,10 @@ interface Props {
 }
 
 export function QuickCaptureModal({ onClose }: Props) {
+  const router = useRouter();
+  const supabase = createClient();
+
+  // ── Capture mode state ─────────────────────────────────────────
   const [phase, setPhase] = useState<Phase>("input");
   const [text, setText] = useState("");
   const [isRecording, setIsRecording] = useState(false);
@@ -68,12 +78,25 @@ export function QuickCaptureModal({ onClose }: Props) {
   const [editedTitle, setEditedTitle] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [savedDestination, setSavedDestination] = useState<string | null>(null);
+  const [savedLabel, setSavedLabel] = useState<string | null>(null);
+
+  // ── Quick save state ───────────────────────────────────────────
+  const [appMode, setAppMode] = useState<AppMode>("capture");
+  const [quickSaving, setQuickSaving] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [customDate, setCustomDate] = useState("");
+
+  // ── Goal mode state ────────────────────────────────────────────
+  const [goalTitle, setGoalTitle] = useState("");
+  const [goalCategory, setGoalCategory] = useState<GoalCategory>("music_event");
+  const [goalEventDate, setGoalEventDate] = useState("");
+  const [isCreatingGoal, setIsCreatingGoal] = useState(false);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // ─── Voice ────────────────────────────────────────────────────
+  // ── Voice ──────────────────────────────────────────────────────
   const startRecording = useCallback(() => {
     setError(null);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -123,7 +146,121 @@ export function QuickCaptureModal({ onClose }: Props) {
     setInterimText("");
   }, []);
 
-  // ─── Analyze ─────────────────────────────────────────────────
+  // ── Instant save (no AI) ───────────────────────────────────────
+  const handleInstantSave = async (when: "today" | "tomorrow" | "custom") => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    if (when === "custom" && !customDate) return;
+
+    const now = new Date();
+    let dueDate: string;
+    if (when === "today") dueDate = format(now, "yyyy-MM-dd");
+    else if (when === "tomorrow") dueDate = format(addDays(now, 1), "yyyy-MM-dd");
+    else dueDate = customDate;
+
+    const label =
+      when === "today"
+        ? "今日のTODOに追加しました"
+        : when === "tomorrow"
+        ? "明日のTODOに追加しました"
+        : `${dueDate}のTODOに追加しました`;
+
+    setQuickSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/ai/quick-capture/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          captureId: null,
+          parsed: {
+            type: "task",
+            title: trimmed,
+            save_destination: "task",
+            due_date: dueDate,
+            ai_generated: false,
+            suggested_role_id: null,
+            suggested_role_name: null,
+            confidence: "high",
+          } as ParsedQuickCapture,
+          rawText: trimmed,
+        }),
+      });
+      if (!res.ok) throw new Error("save failed");
+      setSavedLabel(label);
+      setSavedDestination("task");
+      setPhase("done");
+      setTimeout(() => onClose(), 1400);
+    } catch {
+      setError("保存に失敗しました。もう一度試してください。");
+    } finally {
+      setQuickSaving(false);
+    }
+  };
+
+  // ── Goal creation ──────────────────────────────────────────────
+  const handleCreateGoal = async () => {
+    if (!goalTitle.trim() || !goalEventDate) return;
+    setIsCreatingGoal(true);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setIsCreatingGoal(false);
+      return;
+    }
+
+    const { data: goal } = await supabase
+      .from("goals")
+      .insert({
+        user_id: user.id,
+        title: goalTitle.trim(),
+        category: goalCategory,
+        event_date: goalEventDate,
+      })
+      .select()
+      .single();
+
+    if (!goal) {
+      setIsCreatingGoal(false);
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/ai/generate-goal-tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: goalTitle.trim(),
+          category: goalCategory,
+          event_date: goalEventDate,
+        }),
+      });
+      const { tasks } = await res.json();
+
+      if (tasks?.length) {
+        await supabase.from("goal_tasks").insert(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          tasks.map((t: any, i: number) => ({
+            goal_id: goal.id,
+            user_id: user.id,
+            title: t.title,
+            due_date: t.due_date || null,
+            sort_order: i,
+          }))
+        );
+      }
+    } catch {
+      // タスク生成失敗でもゴール自体は作成済み
+    }
+
+    setIsCreatingGoal(false);
+    onClose();
+    router.push(`/goals/${goal.id}`);
+  };
+
+  // ── AI Analyze ─────────────────────────────────────────────────
   const handleAnalyze = async () => {
     const trimmed = text.trim();
     if (!trimmed) return;
@@ -168,7 +305,7 @@ export function QuickCaptureModal({ onClose }: Props) {
     }
   };
 
-  // ─── Save ────────────────────────────────────────────────────
+  // ── Save after AI review ───────────────────────────────────────
   const handleSave = async () => {
     if (!parsed) return;
     setPhase("saving");
@@ -192,6 +329,7 @@ export function QuickCaptureModal({ onClose }: Props) {
 
       if (!res.ok) throw new Error("保存失敗");
       const data = (await res.json()) as { destination: string };
+      setSavedLabel(null);
       setSavedDestination(data.destination);
       setPhase("done");
 
@@ -202,7 +340,9 @@ export function QuickCaptureModal({ onClose }: Props) {
     }
   };
 
-  // ─── Render ───────────────────────────────────────────────────
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+
+  // ── Render ─────────────────────────────────────────────────────
   return (
     <div
       className="fixed inset-0 z-[100] flex flex-col justify-end"
@@ -227,9 +367,23 @@ export function QuickCaptureModal({ onClose }: Props) {
         <div className="px-5 pb-8">
           {/* Header */}
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-semibold text-stone-800">
-              {phase === "done" ? "保存しました" : "Quick Capture"}
-            </h2>
+            <div className="flex items-center gap-2">
+              {appMode === "goal" && (
+                <button
+                  onClick={() => setAppMode("capture")}
+                  className="flex items-center gap-0.5 text-stone-400 hover:text-stone-600 transition-colors"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+              )}
+              <h2 className="text-base font-semibold text-stone-800">
+                {appMode === "goal"
+                  ? "ゴール登録"
+                  : phase === "done"
+                  ? "保存しました"
+                  : "Quick Capture"}
+              </h2>
+            </div>
             <button
               onClick={onClose}
               className="w-7 h-7 flex items-center justify-center rounded-full bg-stone-100 text-stone-500"
@@ -246,9 +400,90 @@ export function QuickCaptureModal({ onClose }: Props) {
           )}
 
           <AnimatePresence mode="wait">
-            {/* ── Input phase ── */}
-            {phase === "input" && (
+            {/* ── Goal mode ── */}
+            {appMode === "goal" && (
+              <motion.div
+                key="goal"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                className="space-y-4"
+              >
+                {/* Category picker */}
+                <div>
+                  <p className="text-xs text-stone-500 mb-2 font-medium">カテゴリ</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(Object.keys(GOAL_CATEGORY_CONFIG) as GoalCategory[]).map((cat) => {
+                      const cfg = GOAL_CATEGORY_CONFIG[cat];
+                      const isSelected = goalCategory === cat;
+                      return (
+                        <button
+                          key={cat}
+                          onClick={() => setGoalCategory(cat)}
+                          className="flex items-center gap-2 px-3 py-2.5 rounded-xl border text-xs font-medium transition-all"
+                          style={
+                            isSelected
+                              ? { backgroundColor: cfg.bg, borderColor: cfg.text, color: cfg.text }
+                              : { backgroundColor: "white", borderColor: "#e7e5e4", color: "#78716c" }
+                          }
+                        >
+                          <span>{cfg.emoji}</span>
+                          {cfg.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Title */}
+                <div>
+                  <p className="text-xs text-stone-500 mb-1.5 font-medium">ゴールタイトル</p>
+                  <input
+                    type="text"
+                    value={goalTitle}
+                    onChange={(e) => setGoalTitle(e.target.value)}
+                    placeholder="例）渋谷でワンマンライブを開く"
+                    className="w-full px-3 py-2.5 text-sm rounded-xl border border-stone-200 bg-stone-50 focus:outline-none focus:border-sage focus:bg-white transition-colors"
+                    autoFocus
+                  />
+                </div>
+
+                {/* Event date */}
+                <div>
+                  <p className="text-xs text-stone-500 mb-1.5 font-medium">イベント日</p>
+                  <input
+                    type="date"
+                    value={goalEventDate}
+                    onChange={(e) => setGoalEventDate(e.target.value)}
+                    min={todayStr}
+                    className="w-full px-3 py-2.5 text-sm rounded-xl border border-stone-200 bg-stone-50 focus:outline-none focus:border-sage focus:bg-white transition-colors"
+                  />
+                </div>
+
+                <button
+                  onClick={handleCreateGoal}
+                  disabled={!goalTitle.trim() || !goalEventDate || isCreatingGoal}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-sage text-white text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 transition-transform"
+                >
+                  {isCreatingGoal ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      AIがタスクを作成中...
+                    </>
+                  ) : (
+                    <>
+                      <Target className="w-4 h-4" />
+                      AIで逆算タスクを生成して登録
+                    </>
+                  )}
+                </button>
+              </motion.div>
+            )}
+
+            {/* ── Capture: input phase ── */}
+            {appMode === "capture" && phase === "input" && (
               <motion.div key="input" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                {/* Textarea */}
                 <div className="relative mb-3">
                   <textarea
                     ref={textareaRef}
@@ -261,13 +496,11 @@ export function QuickCaptureModal({ onClose }: Props) {
                       if (e.key === "Enter" && e.metaKey) handleAnalyze();
                     }}
                   />
-                  {/* Interim voice text overlay */}
                   {interimText && (
                     <div className="absolute bottom-2 left-4 right-12 text-xs text-sage/60 italic truncate">
                       {interimText}
                     </div>
                   )}
-                  {/* Voice button */}
                   <button
                     onClick={isRecording ? stopRecording : startRecording}
                     className={`absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full transition-colors ${
@@ -286,9 +519,89 @@ export function QuickCaptureModal({ onClose }: Props) {
                   </p>
                 )}
 
+                {/* Quick chips */}
+                <div className="grid grid-cols-4 gap-1.5 mb-2">
+                  <button
+                    onClick={() => handleInstantSave("today")}
+                    disabled={!text.trim() || quickSaving || isRecording}
+                    className="flex flex-col items-center gap-0.5 py-2 rounded-xl border border-stone-200 text-xs text-stone-600 bg-stone-50 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 transition-all hover:border-sage hover:text-sage hover:bg-sage/5"
+                  >
+                    {quickSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckSquare className="w-3.5 h-3.5" />}
+                    <span>今日</span>
+                  </button>
+                  <button
+                    onClick={() => handleInstantSave("tomorrow")}
+                    disabled={!text.trim() || quickSaving || isRecording}
+                    className="flex flex-col items-center gap-0.5 py-2 rounded-xl border border-stone-200 text-xs text-stone-600 bg-stone-50 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 transition-all hover:border-sage hover:text-sage hover:bg-sage/5"
+                  >
+                    <CheckSquare className="w-3.5 h-3.5" />
+                    <span>明日</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (!text.trim()) return;
+                      setShowDatePicker((v) => !v);
+                    }}
+                    disabled={!text.trim() || quickSaving || isRecording}
+                    className={`flex flex-col items-center gap-0.5 py-2 rounded-xl border text-xs disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 transition-all ${
+                      showDatePicker
+                        ? "border-sage text-sage bg-sage/5"
+                        : "border-stone-200 text-stone-600 bg-stone-50 hover:border-sage hover:text-sage hover:bg-sage/5"
+                    }`}
+                  >
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span>日付▼</span>
+                  </button>
+                  <button
+                    onClick={() => setAppMode("goal")}
+                    disabled={quickSaving}
+                    className="flex flex-col items-center gap-0.5 py-2 rounded-xl border border-stone-200 text-xs text-stone-600 bg-stone-50 disabled:opacity-40 active:scale-95 transition-all hover:border-amber-400 hover:text-amber-600 hover:bg-amber-50"
+                  >
+                    <Target className="w-3.5 h-3.5" />
+                    <span>ゴール</span>
+                  </button>
+                </div>
+
+                {/* Date picker (expandable) */}
+                <AnimatePresence>
+                  {showDatePicker && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden mb-2"
+                    >
+                      <div className="flex gap-2 pt-1">
+                        <input
+                          type="date"
+                          value={customDate}
+                          onChange={(e) => setCustomDate(e.target.value)}
+                          min={todayStr}
+                          className="flex-1 px-3 py-2 text-sm rounded-xl border border-stone-200 bg-stone-50 focus:outline-none focus:border-sage focus:bg-white transition-colors"
+                        />
+                        <button
+                          onClick={() => handleInstantSave("custom")}
+                          disabled={!customDate || quickSaving}
+                          className="px-4 py-2 rounded-xl bg-sage text-white text-sm font-medium disabled:opacity-40 active:scale-95 transition-transform"
+                        >
+                          追加
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Divider */}
+                <div className="flex items-center gap-3 my-3">
+                  <div className="flex-1 h-px bg-stone-100" />
+                  <span className="text-[11px] text-stone-300">または</span>
+                  <div className="flex-1 h-px bg-stone-100" />
+                </div>
+
+                {/* AI analyze */}
                 <button
                   onClick={handleAnalyze}
-                  disabled={!text.trim() || isRecording}
+                  disabled={!text.trim() || isRecording || quickSaving}
                   className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-sage text-white text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 transition-transform"
                 >
                   AIで解析
@@ -299,7 +612,7 @@ export function QuickCaptureModal({ onClose }: Props) {
             )}
 
             {/* ── Analyzing ── */}
-            {phase === "analyzing" && (
+            {appMode === "capture" && phase === "analyzing" && (
               <motion.div
                 key="analyzing"
                 initial={{ opacity: 0 }}
@@ -313,7 +626,7 @@ export function QuickCaptureModal({ onClose }: Props) {
             )}
 
             {/* ── Review ── */}
-            {phase === "review" && parsed && (
+            {appMode === "capture" && phase === "review" && parsed && (
               <motion.div
                 key="review"
                 initial={{ opacity: 0, y: 8 }}
@@ -327,7 +640,13 @@ export function QuickCaptureModal({ onClose }: Props) {
                   <div className="flex items-center gap-2">
                     <span className="flex items-center gap-1 px-2 py-0.5 bg-white border border-stone-200 rounded-full text-[11px] text-stone-500">
                       {TYPE_ICONS[parsed.type]}
-                      {parsed.type === "task" ? "タスク" : parsed.type === "schedule" ? "予定" : parsed.type === "idea" ? "アイデア" : "未分類"}
+                      {parsed.type === "task"
+                        ? "タスク"
+                        : parsed.type === "schedule"
+                        ? "予定"
+                        : parsed.type === "idea"
+                        ? "アイデア"
+                        : "未分類"}
                     </span>
                     <span
                       className={`text-[11px] px-2 py-0.5 rounded-full ${
@@ -445,7 +764,7 @@ export function QuickCaptureModal({ onClose }: Props) {
             )}
 
             {/* ── Saving ── */}
-            {phase === "saving" && (
+            {appMode === "capture" && phase === "saving" && (
               <motion.div
                 key="saving"
                 initial={{ opacity: 0 }}
@@ -469,13 +788,12 @@ export function QuickCaptureModal({ onClose }: Props) {
                   <Check className="w-7 h-7 text-sage" />
                 </div>
                 <p className="text-sm font-medium text-stone-700">
-                  {savedDestination === "task"
-                    ? "タスクに追加しました"
-                    : savedDestination === "schedule"
-                    ? "予定に追加しました"
-                    : savedDestination === "today_plan"
-                    ? "今日のプランに追加しました"
-                    : "Inboxに保存しました"}
+                  {savedLabel ??
+                    (savedDestination === "task" || savedDestination === "today_plan"
+                      ? "タスクに追加しました"
+                      : savedDestination === "schedule"
+                      ? "予定に追加しました"
+                      : "Inboxに保存しました")}
                 </p>
               </motion.div>
             )}
