@@ -8,7 +8,7 @@ import { ja } from "date-fns/locale";
 import { Plus, X, ChevronRight, Target, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Goal, GoalTask, GoalCategory, GOAL_CATEGORY_CONFIG, GoalTimeHorizon, GOAL_TIME_HORIZON_CONFIG, Role, ROLE_CATEGORY_COLORS } from "@/types";
+import { Goal, GoalTask, GoalTimeHorizon, GOAL_TIME_HORIZON_CONFIG, Role, ROLE_CATEGORY_COLORS } from "@/types";
 
 export default function GoalsPage() {
   const supabase = createClient();
@@ -172,7 +172,7 @@ export default function GoalsPage() {
         <div className="space-y-3">
           {goals.map((g, i) => {
             const progress = progressFor(g);
-            const config = GOAL_CATEGORY_CONFIG[g.category as GoalCategory] ?? GOAL_CATEGORY_CONFIG.other;
+            const config = GOAL_TIME_HORIZON_CONFIG[g.time_horizon as GoalTimeHorizon] ?? GOAL_TIME_HORIZON_CONFIG.event;
             const countdown = countdownLabel(g.event_date);
             const nextTask = g.tasks.find((t) => !t.is_completed);
 
