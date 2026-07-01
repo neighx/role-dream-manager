@@ -67,9 +67,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       supabase.from("goals").select("id,title,event_date,time_horizon,category").eq("user_id", user.id).eq("is_completed", false).order("event_date", { ascending: true }).limit(5),
     ]);
 
-    if (!checkin) {
-      return NextResponse.json({ error: "今日のチェックインが必要です" }, { status: 400 });
-    }
+    // チェックイン未実施時はデフォルト値で続行
+    const effectiveCheckin = checkin ?? {
+      id: "none",
+      user_id: user.id,
+      mood: "okay" as const,
+      energy: 70 as EnergyLevel,
+      stress_cause: "time" as StressCause,
+      mode: "maintain" as DayMode,
+      selected_role_ids: selectedRoleIds,
+      pet_message: null,
+      date: todayStr,
+      created_at: new Date().toISOString(),
+    } as DailyCheckin;
 
     // 選択されたRoleのみフィルタ
     const selectedRoles = (allRoles ?? []).filter(
@@ -92,7 +102,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         result = await generateTodayPlanWithAI({
           date: new Date(todayStr + "T00:00:00"),
           profile,
-          checkin,
+          checkin: effectiveCheckin,
           selectedRoles,
           recentDoneTasks,
           pendingTasks,
@@ -104,12 +114,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       } catch (aiError) {
         console.error("[AI] generation failed, falling back to rules:", aiError);
         result = ruleBasedTodayPlan(
-          { checkin, selectedRoles },
+          { checkin: effectiveCheckin, selectedRoles },
           "AI生成に失敗しました。まずは小さなプランを作りました。"
         );
       }
     } else {
-      result = ruleBasedTodayPlan({ checkin, selectedRoles });
+      result = ruleBasedTodayPlan({ checkin: effectiveCheckin, selectedRoles });
     }
 
     // ─── daily_plans に保存 ──────────────────────────────────
@@ -124,7 +134,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       const planData = {
         user_id: user.id,
         date: todayStr,
-        checkin_id: checkin.id,
+        checkin_id: checkin?.id ?? null,
         selected_role_ids: selectedRoleIds,
         overall_message: result.meta.overall_message,
         pet_message: result.meta.pet_message,
