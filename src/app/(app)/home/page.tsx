@@ -6,11 +6,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { format, startOfWeek, addDays, isSameDay, isToday } from "date-fns";
 import { ja } from "date-fns/locale";
-import { ArrowRight, Plus, Sparkles, Moon, Sun, Inbox, X, Trash2, ChevronDown } from "lucide-react";
+import { ArrowRight, Plus, Sparkles, Moon, Sun, Inbox, X, Trash2, ChevronDown, Target, ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   UserProfile, Role, DailyCheckin, Task, Schedule, ProjectTask, DailyLog, MoodType,
   PetType, EnergyLevel, DayMode, DisplayMode, ROLE_CATEGORY_COLORS, MODE_LABELS, TaskStatus,
+  Goal, GOAL_CATEGORY_CONFIG, GoalCategory,
 } from "@/types";
 import { MOOD_EMOJI } from "@/components/daily-log/DailyLogForm";
 
@@ -201,10 +202,7 @@ export default function HomePage() {
   const [showDoneTasks, setShowDoneTasks] = useState(false);
   const [expandedRoleId, setExpandedRoleId] = useState<string | null>(null);
   const [displayMode, setDisplayMode] = useState<DisplayMode>("simple");
-  const [showGoalModal, setShowGoalModal] = useState(false);
-  const [goalInput, setGoalInput] = useState("");
-  const [isGeneratingGoal, setIsGeneratingGoal] = useState(false);
-  const [goalResult, setGoalResult] = useState<{ simple_title: string; easy_category_display: string; today_tasks: { title: string; easy_reason: string }[]; pet_message: string } | null>(null);
+  const [goals, setGoals] = useState<(Goal & { taskCount: number; completedCount: number })[]>([]);
 
 
   const today = new Date();
@@ -256,6 +254,20 @@ export default function HomePage() {
       setWeekLogs((wl || []) as DailyLog[]);
     }
     load();
+    // ゴール取得
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      supabase.from("goals").select("*, goal_tasks(id, is_completed)")
+        .eq("user_id", user.id).eq("is_completed", false)
+        .order("event_date", { ascending: true }).limit(3)
+        .then(({ data: gs }) => {
+          setGoals((gs || []).map((g: any) => ({
+            ...g,
+            taskCount: (g.goal_tasks || []).length,
+            completedCount: (g.goal_tasks || []).filter((t: any) => t.is_completed).length,
+          })));
+        });
+    });
   }, []);
 
   // ─── Derived ──────────────────────────────────────────────────
@@ -331,37 +343,7 @@ export default function HomePage() {
     }
   }
 
-  async function generateGoal() {
-    if (!goalInput.trim()) return;
-    setIsGeneratingGoal(true);
-    setGoalResult(null);
-    try {
-      const res = await fetch("/api/ai/classify-goal", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          goal_text: goalInput.trim(),
-          deadline_type: "undecided",
-          deadline_date: null,
-          save_to_db: true,
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setGoalResult(data);
-        // TODOリストを再読み込み
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const { data: t } = await supabase.from("tasks").select("*").eq("user_id", user.id).eq("due_date", todayStr).order("quadrant").limit(30);
-          setTodayTasks(t || []);
-        }
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsGeneratingGoal(false);
-    }
-  }
+
 
   async function addTask() {
     if (!newTitle.trim()) return;
@@ -464,7 +446,7 @@ export default function HomePage() {
       <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-[13px] font-medium text-charcoal">
-            {displayMode === "simple" ? "今日の小さな一歩" : "今日のTODO"}
+            今日のTODO
           </h2>
           <div className="flex items-center gap-3">
             <button onClick={() => setShowAddForm(v => !v)} className="flex items-center gap-0.5 text-[11px] text-sage">
@@ -569,15 +551,53 @@ export default function HomePage() {
         )}
       </motion.div>
 
-      {/* やりたいことを追加ボタン */}
-      <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.13 }}>
-        <button
-          onClick={() => { setShowGoalModal(true); setGoalResult(null); setGoalInput(""); }}
-          className="w-full bg-sage text-white rounded-2xl py-3.5 flex items-center justify-center gap-2 font-medium text-sm shadow-sm active:scale-[0.98] transition-transform"
-        >
-          <Plus className="w-4 h-4" />
-          やりたいことを追加
-        </button>
+      {/* ゴール */}
+      <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.13 }} className="space-y-2.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <Target className="w-4 h-4 text-sage" />
+            <h2 className="text-[13px] font-medium text-charcoal">ゴール</h2>
+          </div>
+          <Link href="/goals" className="flex items-center gap-0.5 text-[11px] text-sage">
+            <Plus className="w-3.5 h-3.5" />追加・一覧
+          </Link>
+        </div>
+        {goals.length === 0 ? (
+          <Link href="/goals">
+            <div className="bg-white rounded-2xl px-4 py-3 shadow-sm flex items-center gap-3 active:scale-[0.98] transition-transform">
+              <span className="text-lg">🎯</span>
+              <p className="text-xs text-muted-foreground flex-1">ゴールを追加して逆算タスクを作ろう</p>
+              <ChevronRight className="w-4 h-4 text-muted-foreground/50" />
+            </div>
+          </Link>
+        ) : (
+          <div className="space-y-2">
+            {goals.map((g) => {
+              const config = GOAL_CATEGORY_CONFIG[g.category as GoalCategory] ?? GOAL_CATEGORY_CONFIG.other;
+              const progress = g.taskCount > 0 ? Math.round((g.completedCount / g.taskCount) * 100) : 0;
+              const daysLeft = Math.ceil((new Date(g.event_date + "T00:00:00").getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+              return (
+                <Link key={g.id} href={`/goals/${g.id}`}>
+                  <div className="bg-white rounded-2xl px-4 py-3 shadow-sm flex items-center gap-3 active:scale-[0.98] transition-transform">
+                    <span className="text-base shrink-0">{config.emoji}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-charcoal truncate">{g.title}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <div className="flex-1 h-1 rounded-full bg-mist overflow-hidden">
+                          <div className="h-full rounded-full bg-sage" style={{ width: `${progress}%` }} />
+                        </div>
+                        <span className={`text-[10px] shrink-0 ${daysLeft <= 7 ? "text-red-500 font-medium" : "text-muted-foreground"}`}>
+                          あと{daysLeft}日
+                        </span>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50 shrink-0" />
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
       </motion.div>
 
       {/* ④ 今日のRole Plan（コンパクト展開式） */}
@@ -875,94 +895,7 @@ export default function HomePage() {
 
     </div>
 
-    {/* やりたいことを追加 モーダル */}
 
-    <AnimatePresence>
-      {showGoalModal && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 bg-black/40 z-50 flex items-end"
-          onClick={(e) => { if (e.target === e.currentTarget) setShowGoalModal(false); }}
-        >
-          <motion.div
-            initial={{ y: "100%" }}
-            animate={{ y: 0 }}
-            exit={{ y: "100%" }}
-            transition={{ type: "spring", damping: 28, stiffness: 300 }}
-            className="bg-ivory w-full rounded-t-3xl p-5 pb-10 max-h-[85vh] overflow-y-auto"
-          >
-            <div className="w-8 h-1 bg-mist rounded-full mx-auto mb-5" />
-            <h3 className="text-lg font-medium text-charcoal mb-1">
-              {goalResult ? "手順を作りました" : "やりたいことを追加"}
-            </h3>
-
-            {!goalResult ? (
-              <div className="space-y-4 mt-3">
-                <p className="text-sm text-muted-foreground">
-                  AIが手順と今日やることを自動で作ります。
-                </p>
-                <textarea
-                  autoFocus
-                  value={goalInput}
-                  onChange={(e) => setGoalInput(e.target.value)}
-                  placeholder={"例：7月30日にイベントを開催したい\n来月までに曲を完成させたい\n英語を毎日15分やりたい"}
-                  className="w-full text-sm text-charcoal bg-white rounded-2xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-sage/40 resize-none border border-mist"
-                  rows={4}
-                />
-                <button
-                  onClick={generateGoal}
-                  disabled={!goalInput.trim() || isGeneratingGoal}
-                  className="w-full py-4 rounded-2xl bg-sage text-white font-medium text-sm disabled:opacity-40 flex items-center justify-center gap-2"
-                >
-                  {isGeneratingGoal ? (
-                    <>
-                      <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                      AIが手順を作っています…
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-4 h-4" />
-                      AIに手順を作ってもらう
-                    </>
-                  )}
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-4 mt-3">
-                <div className="bg-sage/10 rounded-xl px-3 py-2.5">
-                  <p className="text-sm text-sage">
-                    これは「{goalResult.easy_category_display}」に入れておきました
-                  </p>
-                </div>
-                <div className="bg-white rounded-2xl p-4 space-y-2.5">
-                  <p className="text-xs text-muted-foreground font-medium">まず今日やること</p>
-                  {goalResult.today_tasks.map((t, i) => (
-                    <div key={i} className="flex items-center gap-2.5">
-                      <div className="w-4 h-4 rounded-full border-2 border-sage shrink-0" />
-                      <div>
-                        <p className="text-sm text-charcoal">{t.title}</p>
-                        <p className="text-[11px] text-muted-foreground">{t.easy_reason}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <p className="text-sm text-charcoal bg-white rounded-2xl px-4 py-3">
-                  {petType === "dog" ? "🐶" : petType === "robot" ? "🤖" : "🐱"} {goalResult.pet_message}
-                </p>
-                <button
-                  onClick={() => setShowGoalModal(false)}
-                  className="w-full py-4 rounded-2xl bg-sage text-white font-medium text-sm"
-                >
-                  ホームに戻る
-                </button>
-              </div>
-            )}
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
     </>
   );
 }
