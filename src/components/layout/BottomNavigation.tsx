@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Calendar, CheckSquare, Star, Target } from "lucide-react";
+import { Home, Calendar, CheckSquare, Star, Settings } from "lucide-react";
 import { motion } from "framer-motion";
 
 const NAV_ITEMS = [
@@ -10,7 +10,7 @@ const NAV_ITEMS = [
   { href: "/calendar", icon: Calendar, label: "カレンダー" },
   { href: "/today", icon: CheckSquare, label: "今日" },
   { href: "/roles", icon: Star, label: "Role" },
-  { href: "/goals", icon: Target, label: "ゴール" },
+  { href: "/settings", icon: Settings, label: "設定" },
 ];
 
 export function BottomNavigation() {
