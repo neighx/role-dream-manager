@@ -5,7 +5,6 @@ import { useState, useEffect, use } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { format } from "date-fns";
 import { ChevronLeft, Calendar, Users, MessageSquare, ImagePlus, Sparkles, Check, RefreshCw, Trash2, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Role, Task, ROLE_CATEGORY_COLORS, Project, Goal, GOAL_TIME_HORIZON_CONFIG, GoalTimeHorizon } from "@/types";
