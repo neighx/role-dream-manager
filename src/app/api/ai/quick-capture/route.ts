@@ -64,7 +64,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         user_id: user.id,
         raw_input: rawText,
         input_type: inputType,
-        parsed_type: parsed.type,
+        parsed_type: (parsed.type === "message_draft" || parsed.type === "sns_post") ? "inbox" : parsed.type,
         parsed_json: parsed,
         status: "pending",
         confidence: parsed.confidence,
