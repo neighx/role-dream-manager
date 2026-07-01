@@ -20,7 +20,6 @@ export default function GoalsPage() {
 
   // 新規ゴールフォーム
   const [newTitle, setNewTitle] = useState("");
-  const [newCategory, setNewCategory] = useState<GoalCategory>("music_event");
   const [newDate, setNewDate] = useState("");
   const [newTimeHorizon, setNewTimeHorizon] = useState<GoalTimeHorizon>("event");
   const [newRoleId, setNewRoleId] = useState<string>("");
@@ -66,7 +65,7 @@ export default function GoalsPage() {
     // ゴール登録
     const { data: goal } = await supabase
       .from("goals")
-      .insert({ user_id: user.id, title: newTitle.trim(), category: newCategory, event_date: newDate, role_id: newRoleId || null, time_horizon: newTimeHorizon })
+      .insert({ user_id: user.id, title: newTitle.trim(), category: "other", event_date: newDate, role_id: newRoleId || null, time_horizon: newTimeHorizon })
       .select()
       .single();
 
@@ -76,7 +75,7 @@ export default function GoalsPage() {
     const res = await fetch("/api/ai/generate-goal-tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: newTitle.trim(), category: newCategory, event_date: newDate }),
+      body: JSON.stringify({ title: newTitle.trim(), category: "other", event_date: newDate }),
     });
     const { tasks } = await res.json();
 
@@ -94,7 +93,6 @@ export default function GoalsPage() {
     }
 
     setNewTitle("");
-    setNewCategory("music_event");
     setNewDate("");
     setNewRoleId("");
     setNewTimeHorizon("event");
@@ -260,7 +258,7 @@ export default function GoalsPage() {
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 28, stiffness: 280 }}
-              className="bg-ivory w-full max-w-md rounded-t-3xl p-5 pb-10 space-y-5"
+              className="bg-ivory w-full max-w-md rounded-t-3xl p-5 pb-safe pb-10 space-y-5 overflow-y-auto max-h-[85vh]"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between">
@@ -325,23 +323,6 @@ export default function GoalsPage() {
                 </div>
               )}
 
-              {/* カテゴリ選択 */}
-              <div className="grid grid-cols-4 gap-2">
-                {(Object.entries(GOAL_CATEGORY_CONFIG) as [GoalCategory, typeof GOAL_CATEGORY_CONFIG[GoalCategory]][]).map(([key, cfg]) => (
-                  <button
-                    key={key}
-                    onClick={() => setNewCategory(key)}
-                    className={`flex flex-col items-center gap-1 py-3 rounded-2xl border-2 transition-all ${
-                      newCategory === key ? "border-sage" : "border-transparent bg-white"
-                    }`}
-                    style={newCategory === key ? { backgroundColor: cfg.bg + "40" } : {}}
-                  >
-                    <span className="text-xl">{cfg.emoji}</span>
-                    <span className="text-[9px] text-charcoal leading-tight text-center">{cfg.label}</span>
-                  </button>
-                ))}
-              </div>
-
               {/* タイトル */}
               <div className="space-y-1.5">
                 <label className="text-xs text-muted-foreground">ゴール名</label>
@@ -349,7 +330,7 @@ export default function GoalsPage() {
                   type="text"
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
-                  placeholder="例：渋谷クアトロ ワンマンライブ"
+                  placeholder="例：フェスでライブ"
                   className="w-full text-sm text-charcoal bg-white rounded-xl px-3 py-3 focus:outline-none"
                   autoFocus
                 />
