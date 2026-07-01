@@ -11,7 +11,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   UserProfile, Role, DailyCheckin, Task, Schedule, ProjectTask, DailyLog, MoodType,
   PetType, EnergyLevel, DayMode, DisplayMode, ROLE_CATEGORY_COLORS, MODE_LABELS, TaskStatus,
-  Goal, GOAL_CATEGORY_CONFIG, GoalCategory,
+  Goal, GOAL_CATEGORY_CONFIG, GoalCategory, GOAL_TIME_HORIZON_CONFIG, GoalTimeHorizon,
 } from "@/types";
 import { MOOD_EMOJI } from "@/components/daily-log/DailyLogForm";
 
@@ -322,6 +322,15 @@ export default function HomePage() {
   });
   const weekChartMax = Math.max(...weekDayTotals.map((d) => d.total), 60);
   const weekTotalMinutes = weekDayTotals.reduce((sum, d) => sum + d.total, 0);
+
+  // ─── 夢チェーン derived ─────────────────────────────────────────
+  const primaryRole = roles[0] ?? null;
+  const HORIZON_ORDER = ["3year", "1year", "3month", "monthly", "event"];
+  const primaryRoleGoals = goals
+    .filter(g => g.role_id === primaryRole?.id)
+    .sort((a, b) => HORIZON_ORDER.indexOf(a.time_horizon) - HORIZON_ORDER.indexOf(b.time_horizon));
+  const primaryTopGoal = primaryRoleGoals[0] ?? null;
+  const primaryRoleTask = allUndone.find(t => t.role_id === primaryRole?.id) ?? allUndone[0] ?? null;
 
   // ─── ヘルパー ──────────────────────────────────────────────────
 
@@ -746,7 +755,82 @@ export default function HomePage() {
         )}
       </motion.div>
 
-      {/* ゴール */}
+      {/* 夢とつながり */}
+      {primaryRole && (primaryRole.dream || primaryTopGoal || primaryRoleTask) && (
+        <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}>
+          <div className="flex items-center justify-between mb-2.5">
+            <h2 className="text-[13px] font-medium text-charcoal">夢とつながり</h2>
+            <Link href={`/roles/${primaryRole.id}`} className="flex items-center gap-0.5 text-[11px] text-sage">
+              {primaryRole.title} <ArrowRight className="w-3 h-3" />
+            </Link>
+          </div>
+          <div className="bg-white rounded-2xl overflow-hidden shadow-sm">
+            {(() => {
+              const colors = ROLE_CATEGORY_COLORS[primaryRole.category];
+              return (
+                <div style={{ backgroundColor: colors.bg + "25" }}>
+                  <div className="flex">
+                    <div className="w-1 shrink-0" style={{ backgroundColor: colors.border }} />
+                    <div className="flex-1 p-4 space-y-2">
+                      {/* 夢 */}
+                      {primaryRole.dream ? (
+                        <div className="flex items-start gap-2.5">
+                          <span className="text-base shrink-0 leading-tight">🌟</span>
+                          <div>
+                            <p className="text-[9px] font-medium text-muted-foreground uppercase tracking-wide">夢</p>
+                            <p className="text-xs font-medium text-charcoal leading-snug">{primaryRole.dream}</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <Link href={`/roles/${primaryRole.id}`} className="flex items-center gap-2 text-muted-foreground">
+                          <span className="text-base">🌟</span>
+                          <p className="text-xs">夢を設定する →</p>
+                        </Link>
+                      )}
+
+                      {primaryTopGoal && (
+                        <>
+                          <div className="ml-[11px] w-0.5 h-3 bg-mist" />
+                          <div className="flex items-start gap-2.5">
+                            <span className="text-base shrink-0 leading-tight">🎯</span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[9px] font-medium text-muted-foreground uppercase tracking-wide">
+                                {GOAL_TIME_HORIZON_CONFIG[primaryTopGoal.time_horizon as GoalTimeHorizon]?.label ?? "ゴール"}
+                              </p>
+                              <p className="text-xs font-medium text-charcoal truncate">{primaryTopGoal.title}</p>
+                            </div>
+                            {(() => {
+                              const d = Math.ceil((new Date(primaryTopGoal.event_date + "T00:00:00").getTime() - Date.now()) / 86400000);
+                              return d >= 0 ? (
+                                <span className="text-[10px] text-muted-foreground shrink-0">あと{d}日</span>
+                              ) : null;
+                            })()}
+                          </div>
+                        </>
+                      )}
+
+                      {primaryRoleTask && (
+                        <>
+                          <div className="ml-[11px] w-0.5 h-3 bg-mist" />
+                          <div className="flex items-start gap-2.5">
+                            <span className="text-base shrink-0 leading-tight">✅</span>
+                            <div>
+                              <p className="text-[9px] font-medium text-muted-foreground uppercase tracking-wide">今日</p>
+                              <p className="text-xs font-medium text-charcoal">{primaryRoleTask.title}</p>
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </motion.div>
+      )}
+
+            {/* ゴール */}
       <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.13 }} className="space-y-2.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
