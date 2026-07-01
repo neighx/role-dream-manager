@@ -15,6 +15,7 @@ import {
   Check,
   Target,
   ChevronLeft,
+  Copy,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { format, addDays } from "date-fns";
@@ -83,6 +84,7 @@ export function QuickCaptureModal({ onClose }: Props) {
   // ── Quick save state ───────────────────────────────────────────
   const [appMode, setAppMode] = useState<AppMode>("capture");
   const [quickSaving, setQuickSaving] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [customDate, setCustomDate] = useState("");
 
@@ -145,6 +147,22 @@ export function QuickCaptureModal({ onClose }: Props) {
     setIsRecording(false);
     setInterimText("");
   }, []);
+
+  // ── Copy generated content ────────────────────────────────────
+  const handleCopy = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => {
+        setCopied(false);
+        setSavedLabel("コピーしました");
+        setPhase("done");
+        setTimeout(() => onClose(), 1400);
+      }, 600);
+    } catch {
+      setError("コピーに失敗しました。手動でコピーしてください。");
+    }
+  };
 
   // ── Instant save (no AI) ───────────────────────────────────────
   const handleInstantSave = async (when: "today" | "tomorrow" | "custom") => {
@@ -713,6 +731,37 @@ export function QuickCaptureModal({ onClose }: Props) {
                     <p className="text-[11px] text-stone-400 italic">{parsed.reasoning}</p>
                   )}
                 </div>
+
+                {/* Generated content card (message_draft / sns_post) */}
+                {parsed.generated_content && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-amber-700">
+                        {parsed.type === "sns_post" ? "📱 SNS投稿文" : "💬 メッセージ文"}
+                      </span>
+                      <button
+                        onClick={() => handleCopy(parsed.generated_content!)}
+                        className={`flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-medium transition-all active:scale-95 ${
+                          copied
+                            ? "bg-sage/20 text-sage"
+                            : "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                        }`}
+                      >
+                        {copied ? (
+                          <><Check className="w-3 h-3" />コピー済み</>
+                        ) : (
+                          <><Copy className="w-3 h-3" />コピー</>
+                        )}
+                      </button>
+                    </div>
+                    <p className="text-sm text-stone-700 whitespace-pre-wrap leading-relaxed bg-white rounded-xl px-3 py-2.5 border border-amber-100">
+                      {parsed.generated_content}
+                    </p>
+                    <p className="text-[11px] text-amber-600">
+                      【角括弧】は実際の情報に置き換えてください
+                    </p>
+                  </div>
+                )}
 
                 {/* Save destination selector */}
                 <div>
