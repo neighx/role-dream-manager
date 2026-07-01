@@ -8,7 +8,7 @@ import { ja } from "date-fns/locale";
 import { Plus, X, ChevronRight, Target, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Goal, GoalTask, GoalCategory, GOAL_CATEGORY_CONFIG } from "@/types";
+import { Goal, GoalTask, GoalCategory, GOAL_CATEGORY_CONFIG, GoalTimeHorizon, GOAL_TIME_HORIZON_CONFIG, Role, ROLE_CATEGORY_COLORS } from "@/types";
 
 export default function GoalsPage() {
   const supabase = createClient();
@@ -22,6 +22,9 @@ export default function GoalsPage() {
   const [newTitle, setNewTitle] = useState("");
   const [newCategory, setNewCategory] = useState<GoalCategory>("music_event");
   const [newDate, setNewDate] = useState("");
+  const [newTimeHorizon, setNewTimeHorizon] = useState<GoalTimeHorizon>("event");
+  const [newRoleId, setNewRoleId] = useState<string>("");
+  const [roles, setRoles] = useState<Role[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
 
   useEffect(() => {
@@ -32,6 +35,9 @@ export default function GoalsPage() {
     setIsLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+
+    const { data: rs } = await supabase.from("roles").select("id,title,category").eq("user_id", user.id).order("display_order");
+    setRoles((rs || []) as Role[]);
 
     const { data: gs } = await supabase
       .from("goals")
@@ -60,7 +66,7 @@ export default function GoalsPage() {
     // ゴール登録
     const { data: goal } = await supabase
       .from("goals")
-      .insert({ user_id: user.id, title: newTitle.trim(), category: newCategory, event_date: newDate })
+      .insert({ user_id: user.id, title: newTitle.trim(), category: newCategory, event_date: newDate, role_id: newRoleId || null, time_horizon: newTimeHorizon })
       .select()
       .single();
 
@@ -90,6 +96,8 @@ export default function GoalsPage() {
     setNewTitle("");
     setNewCategory("music_event");
     setNewDate("");
+    setNewRoleId("");
+    setNewTimeHorizon("event");
     setShowModal(false);
     setIsGenerating(false);
 
@@ -260,6 +268,58 @@ export default function GoalsPage() {
                   <X className="w-5 h-5 text-muted-foreground" />
                 </button>
               </div>
+
+              {/* 時間軸選択 */}
+              <div>
+                <p className="text-xs text-muted-foreground mb-2">時間軸</p>
+                <div className="flex gap-2 flex-wrap">
+                  {(Object.entries(GOAL_TIME_HORIZON_CONFIG) as [GoalTimeHorizon, typeof GOAL_TIME_HORIZON_CONFIG[GoalTimeHorizon]][]).map(([key, cfg]) => (
+                    <button
+                      key={key}
+                      onClick={() => setNewTimeHorizon(key)}
+                      className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs border transition-all ${
+                        newTimeHorizon === key
+                          ? "bg-sage/10 border-sage text-sage font-medium"
+                          : "border-border text-muted-foreground bg-white"
+                      }`}
+                    >
+                      {cfg.emoji} {cfg.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* ロール選択（任意）*/}
+              {roles.length > 0 && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2">紐づくRole（任意）</p>
+                  <div className="flex gap-2 flex-wrap">
+                    <button
+                      onClick={() => setNewRoleId("")}
+                      className={`px-3 py-1.5 rounded-xl text-xs border transition-all ${
+                        newRoleId === "" ? "bg-sage/10 border-sage text-sage font-medium" : "border-border text-muted-foreground bg-white"
+                      }`}
+                    >
+                      紐づけない
+                    </button>
+                    {roles.map((r) => {
+                      const colors = ROLE_CATEGORY_COLORS[r.category];
+                      return (
+                        <button
+                          key={r.id}
+                          onClick={() => setNewRoleId(r.id)}
+                          className="px-3 py-1.5 rounded-xl text-xs border transition-all"
+                          style={newRoleId === r.id
+                            ? { backgroundColor: colors.bg, borderColor: colors.border, color: colors.text, fontWeight: 500 }
+                            : { borderColor: "#e0ddd6", color: "#888", backgroundColor: "white" }}
+                        >
+                          {r.title}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* カテゴリ選択 */}
               <div className="grid grid-cols-4 gap-2">
