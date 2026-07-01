@@ -73,6 +73,7 @@ export default function NewRolePage() {
   }
 
   return (
+    <>
     <div className="min-h-screen bg-ivory px-5 pt-safe pt-6 pb-8">
       <div className="flex items-center gap-3 mb-8">
         <button onClick={() => router.back()} className="w-10 h-10 rounded-2xl bg-white flex items-center justify-center">
@@ -215,5 +216,6 @@ export default function NewRolePage() {
           </motion.div>
         )}
       </AnimatePresence>
+    </>
   );
 }
