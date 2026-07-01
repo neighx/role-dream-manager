@@ -11,7 +11,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   UserProfile, Role, DailyCheckin, Task, Schedule, ProjectTask, DailyLog, MoodType,
   PetType, EnergyLevel, DayMode, DisplayMode, ROLE_CATEGORY_COLORS, MODE_LABELS, TaskStatus,
-  Goal, GOAL_CATEGORY_CONFIG, GoalCategory, GOAL_TIME_HORIZON_CONFIG, GoalTimeHorizon,
+  Goal, GOAL_TIME_HORIZON_CONFIG, GoalTimeHorizon,
 } from "@/types";
 import { MOOD_EMOJI } from "@/components/daily-log/DailyLogForm";
 
@@ -214,6 +214,7 @@ export default function HomePage() {
   const [planSelectedRoleIds, setPlanSelectedRoleIds] = useState<string[]>([]);
   const [aiPlanError, setAiPlanError] = useState<string | null>(null);
   const [showAllTasks, setShowAllTasks] = useState(false);
+  const [dreamChainRoleIdx, setDreamChainRoleIdx] = useState(0);
   const [todayGoalTasks, setTodayGoalTasks] = useState<Array<{ id: string; title: string; is_completed: boolean; goal_title: string; role_id: string | null }>>([]);
   const [dataLoaded, setDataLoaded] = useState(false);
 
@@ -324,7 +325,7 @@ export default function HomePage() {
   const weekTotalMinutes = weekDayTotals.reduce((sum, d) => sum + d.total, 0);
 
   // ─── 夢チェーン derived ─────────────────────────────────────────
-  const primaryRole = roles[0] ?? null;
+  const primaryRole = roles[Math.min(dreamChainRoleIdx, Math.max(roles.length - 1, 0))] ?? null;
   const HORIZON_ORDER = ["3year", "1year", "3month", "monthly", "event"];
   const primaryRoleGoals = goals
     .filter(g => g.role_id === primaryRole?.id)
@@ -760,9 +761,25 @@ export default function HomePage() {
         <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}>
           <div className="flex items-center justify-between mb-2.5">
             <h2 className="text-[13px] font-medium text-charcoal">夢とつながり</h2>
-            <Link href={`/roles/${primaryRole.id}`} className="flex items-center gap-0.5 text-[11px] text-sage">
-              {primaryRole.title} <ArrowRight className="w-3 h-3" />
-            </Link>
+            {roles.length > 1 ? (
+              <div className="flex items-center gap-1">
+                {roles.map((r, i) => (
+                  <button
+                    key={r.id}
+                    onClick={() => setDreamChainRoleIdx(i)}
+                    className={`px-2 py-0.5 rounded-lg text-[10px] font-medium transition-all ${
+                      i === dreamChainRoleIdx ? "bg-sage/15 text-sage" : "text-muted-foreground"
+                    }`}
+                  >
+                    {r.title}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <Link href={`/roles/${primaryRole.id}`} className="flex items-center gap-0.5 text-[11px] text-sage">
+                {primaryRole.title} <ArrowRight className="w-3 h-3" />
+              </Link>
+            )}
           </div>
           <div className="bg-white rounded-2xl overflow-hidden shadow-sm">
             {(() => {
@@ -852,13 +869,13 @@ export default function HomePage() {
         ) : (
           <div className="space-y-2">
             {goals.map((g) => {
-              const config = GOAL_CATEGORY_CONFIG[g.category as GoalCategory] ?? GOAL_CATEGORY_CONFIG.other;
+              const hConfig = GOAL_TIME_HORIZON_CONFIG[g.time_horizon as GoalTimeHorizon] ?? GOAL_TIME_HORIZON_CONFIG.event;
               const progress = g.taskCount > 0 ? Math.round((g.completedCount / g.taskCount) * 100) : 0;
               const daysLeft = Math.ceil((new Date(g.event_date + "T00:00:00").getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
               return (
                 <Link key={g.id} href={`/goals/${g.id}`}>
                   <div className="bg-white rounded-2xl px-4 py-3 shadow-sm flex items-center gap-3 active:scale-[0.98] transition-transform">
-                    <span className="text-base shrink-0">{config.emoji}</span>
+                    <span className="text-base shrink-0" style={{ color: hConfig.text }}>{hConfig.emoji}</span>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-charcoal truncate">{g.title}</p>
                       <div className="flex items-center gap-2 mt-1">
