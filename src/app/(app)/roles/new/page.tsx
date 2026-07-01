@@ -2,7 +2,7 @@
 export const dynamic = "force-dynamic";
 
 import { useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, Check } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -24,6 +24,11 @@ export default function NewRolePage() {
   const [title, setTitle] = useState("");
   const [dream, setDream] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [showGoalModal, setShowGoalModal] = useState(false);
+  const [createdRoleId, setCreatedRoleId] = useState<string | null>(null);
+  const [goalTitle, setGoalTitle] = useState("");
+  const [goalDate, setGoalDate] = useState("");
+  const [isSavingGoal, setIsSavingGoal] = useState(false);
 
   async function handleSave() {
     if (!category) return;
@@ -39,7 +44,32 @@ export default function NewRolePage() {
     }).select().single();
 
     setIsSaving(false);
-    if (data) router.push(`/roles/${data.id}`);
+    if (data) {
+      setCreatedRoleId(data.id);
+      setShowGoalModal(true);
+    }
+  }
+
+  async function handleSaveGoal() {
+    if (!createdRoleId) return;
+    if (!goalTitle.trim() || !goalDate) {
+      router.push(`/roles/${createdRoleId}`);
+      return;
+    }
+    setIsSavingGoal(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      await supabase.from("goals").insert({
+        user_id: user.id,
+        role_id: createdRoleId,
+        title: goalTitle.trim(),
+        category: "other",
+        event_date: goalDate,
+        time_horizon: "3year",
+      });
+    }
+    setIsSavingGoal(false);
+    router.push(`/roles/${createdRoleId}`);
   }
 
   return (
@@ -119,5 +149,71 @@ export default function NewRolePage() {
         </motion.button>
       </div>
     </div>
+
+      {/* ⑥ Role作成後ゴールカスケードモーダル */}
+      <AnimatePresence>
+        {showGoalModal && createdRoleId && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/40 z-50 flex items-end justify-center"
+          >
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 28, stiffness: 280 }}
+              className="bg-ivory w-full max-w-md rounded-t-3xl p-6 pb-10 space-y-5"
+            >
+              <div className="text-center space-y-2">
+                <p className="text-3xl">🎯</p>
+                <h2 className="text-base font-medium text-charcoal">3年後のゴールを設定しますか？</h2>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  夢への逆算をここから始めましょう。<br />後からでも追加できます。
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">3年後のゴール</label>
+                <input
+                  type="text"
+                  value={goalTitle}
+                  onChange={e => setGoalTitle(e.target.value)}
+                  placeholder="例：武道館でワンマンライブ"
+                  className="w-full text-sm text-charcoal bg-white rounded-xl px-4 py-3 focus:outline-none"
+                  autoFocus
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">目標日（約3年後）</label>
+                <input
+                  type="date"
+                  value={goalDate}
+                  onChange={e => setGoalDate(e.target.value)}
+                  className="w-full text-sm text-charcoal bg-white rounded-xl px-4 py-3 focus:outline-none"
+                />
+              </div>
+
+              <motion.button
+                onClick={handleSaveGoal}
+                disabled={!goalTitle.trim() || !goalDate || isSavingGoal}
+                whileTap={{ scale: 0.97 }}
+                className="w-full py-4 rounded-2xl bg-sage text-white font-medium text-sm disabled:opacity-40"
+              >
+                {isSavingGoal ? "保存中..." : "ゴールを設定する"}
+              </motion.button>
+
+              <button
+                onClick={() => router.push(`/roles/${createdRoleId}`)}
+                className="w-full text-center text-sm text-muted-foreground"
+              >
+                スキップして後で設定する
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
   );
 }
