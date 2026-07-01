@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, Calendar, Users, MessageSquare, ImagePlus, Sparkles, Check, RefreshCw, Trash2, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { Role, Task, ROLE_CATEGORY_COLORS, Project } from "@/types";
+import { Role, Task, ROLE_CATEGORY_COLORS, Project, Goal, GOAL_TIME_HORIZON_CONFIG, GoalTimeHorizon } from "@/types";
 import { DreamGapCard } from "@/components/roles/DreamGapCard";
 import { uploadVisionPhoto, deleteVisionPhoto } from "@/lib/image/uploadVisionPhoto";
 import { ProjectCard } from "@/components/projects/ProjectCard";
@@ -45,7 +45,8 @@ export default function RoleDetailPage({ params }: { params: Promise<{ id: strin
   const [isGenerating, setIsGenerating] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<Record<string, string> | null>(null);
   const [isSavingAll, setIsSavingAll] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "projects">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "projects" | "goals">("overview");
+  const [roleGoals, setRoleGoals] = useState<Goal[]>([]);
   const [showProjectForm, setShowProjectForm] = useState(false);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
 
@@ -69,6 +70,10 @@ export default function RoleDetailPage({ params }: { params: Promise<{ id: strin
       setRole(r);
       setTasks(t || []);
       setProjects((p || []) as Project[]);
+      if (user) {
+        const { data: gs } = await supabase.from("goals").select("*").eq("user_id", user.id).eq("role_id", id).order("event_date", { ascending: true });
+        setRoleGoals((gs || []) as Goal[]);
+      }
       setIsLoading(false);
     }
     load();
@@ -249,6 +254,7 @@ export default function RoleDetailPage({ params }: { params: Promise<{ id: strin
         <div className="flex gap-4 border-b border-border">
           {[
             { key: "overview" as const, label: "概要" },
+            { key: "goals" as const, label: `ゴール${roleGoals.length > 0 ? ` (${roleGoals.length})` : ""}` },
             {
               key: "projects" as const,
               label: `プロジェクト${projects.length > 0 ? ` (${projects.length})` : ""}`,
@@ -267,6 +273,45 @@ export default function RoleDetailPage({ params }: { params: Promise<{ id: strin
             </button>
           ))}
         </div>
+
+        {/* Goalsタブ */}
+        {activeTab === "goals" && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-charcoal">このRoleのゴール</p>
+              <a href="/goals" className="text-xs text-sage">＋ ゴールを追加</a>
+            </div>
+            {roleGoals.length === 0 ? (
+              <div className="bg-white rounded-2xl p-6 text-center shadow-sm">
+                <p className="text-2xl mb-2">🎯</p>
+                <p className="text-sm font-medium text-charcoal">まだゴールがありません</p>
+                <p className="text-xs text-muted-foreground mt-1">ゴールページからこのRoleに紐づけて追加できます</p>
+              </div>
+            ) : (
+              roleGoals.map((g) => {
+                const horizonCfg = GOAL_TIME_HORIZON_CONFIG[g.time_horizon as GoalTimeHorizon];
+                const daysLeft = Math.ceil((new Date(g.event_date + "T00:00:00").getTime() - Date.now()) / 86400000);
+                return (
+                  <a key={g.id} href={`/goals/${g.id}`} className="block bg-white rounded-2xl p-4 shadow-sm">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="text-[11px] text-muted-foreground">{horizonCfg?.emoji} {horizonCfg?.label}</span>
+                          {g.is_completed && <span className="text-[10px] bg-sage/10 text-sage px-1.5 py-0.5 rounded-full">完了</span>}
+                        </div>
+                        <p className="text-sm font-medium text-charcoal truncate">{g.title}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{g.event_date}</p>
+                      </div>
+                      <span className={`text-xs font-medium ml-3 ${daysLeft <= 7 ? "text-red-500" : "text-charcoal"}`}>
+                        {daysLeft < 0 ? "終了" : daysLeft === 0 ? "今日！" : `あと${daysLeft}日`}
+                      </span>
+                    </div>
+                  </a>
+                );
+              })
+            )}
+          </div>
+        )}
 
         {/* Projectsタブ */}
         {activeTab === "projects" && (
