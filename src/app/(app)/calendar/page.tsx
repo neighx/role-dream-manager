@@ -60,8 +60,8 @@ function CalendarContent() {
         .not("scheduled_at", "is", null),
       supabase.from("users_profile").select("*").eq("user_id", user.id).single(),
       supabase.from("project_tasks").select("*").eq("user_id", user.id).not("due_date", "is", null),
-      supabase.from("goal_tasks").select("*").eq("user_id", user.id).not("due_date", "is", null),
       supabase.from("daily_logs").select("date, mood_after").eq("user_id", user.id),
+      supabase.from("goal_tasks").select("*").eq("user_id", user.id).not("due_date", "is", null),
     ]);
 
     setRoles(r || []);
