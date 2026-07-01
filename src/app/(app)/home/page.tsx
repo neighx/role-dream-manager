@@ -270,6 +270,11 @@ export default function HomePage() {
         .gte("date", weekStartStr).lte("date", weekEndStr);
       setWeekLogs((wl || []) as DailyLog[]);
       setDataLoaded(true);
+      // 午前中でタスクが0件ならAIプランを展開済みにする
+      const nowHour = new Date().getHours();
+      if (nowHour < 12 && (!t || t.length === 0) && (!pt || pt.length === 0) && (!gtRaw || gtRaw.length === 0)) {
+        setAiPhase("selecting");
+      }
     }
     load();
     // ゴール取得
@@ -348,12 +353,17 @@ export default function HomePage() {
   async function recalculateRoleProgress(roleId: string) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    const { data: gs } = await supabase.from("goals").select("goal_tasks(is_completed)").eq("role_id", roleId).eq("user_id", user.id);
+    const [{ data: gs }, { data: pts }] = await Promise.all([
+      supabase.from("goals").select("goal_tasks(is_completed)").eq("role_id", roleId).eq("user_id", user.id),
+      supabase.from("project_tasks").select("status").eq("role_id", roleId).eq("user_id", user.id).neq("status", "skipped"),
+    ]);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const allTasks = (gs || []).flatMap((g: any) => g.goal_tasks || []);
-    const total = allTasks.length;
+    const goalTasks = (gs || []).flatMap((g: any) => g.goal_tasks || []);
+    const projectTasks = (pts || []) as { status: string }[];
+    const total = goalTasks.length + projectTasks.length;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const completed = allTasks.filter((t: any) => t.is_completed).length;
+    const completed = goalTasks.filter((t: any) => t.is_completed).length
+      + projectTasks.filter(t => t.status === "done").length;
     const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
     await supabase.from("roles").update({ progress }).eq("id", roleId);
     setRoles(prev => prev.map(r => r.id === roleId ? { ...r, progress } : r));
