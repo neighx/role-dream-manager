@@ -11,7 +11,7 @@ import { ja } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, Plus, X, Trophy } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
-  DailyLog, Milestone, RoleCategory,
+  DailyLog, Milestone, RoleCategory, Goal,
   ROLE_CATEGORY_COLORS, ROLE_CATEGORY_LABELS,
 } from "@/types";
 
