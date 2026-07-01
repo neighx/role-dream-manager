@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
-import { Plus, ChevronRight, Pencil, Check, X } from "lucide-react";
+import { Plus, ChevronRight, Pencil, Check, X, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Role, ROLE_CATEGORY_COLORS } from "@/types";
 import { DreamGapCard } from "@/components/roles/DreamGapCard";
@@ -22,6 +22,7 @@ export default function RolesPage() {
   const [editTitle, setEditTitle] = useState("");
   const [editDream, setEditDream] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -64,6 +65,12 @@ export default function RolesPage() {
     ));
     setIsSaving(false);
     setEditingId(null);
+  }
+
+  async function deleteRole(roleId: string) {
+    await supabase.from("roles").delete().eq("id", roleId);
+    setRoles((prev) => prev.filter((r) => r.id !== roleId));
+    setDeletingId(null);
   }
 
   if (isLoading) {
@@ -273,14 +280,40 @@ export default function RolesPage() {
                             </div>
                           </div>
 
-                          {/* 編集ボタン */}
-                          <button
-                            onClick={(e) => startEdit(role, e)}
-                            className="w-full py-2 rounded-xl border border-border text-xs text-muted-foreground flex items-center justify-center gap-1.5 hover:bg-mist transition-colors"
-                          >
-                            <Pencil className="w-3 h-3" />
-                            タイトル・Dreamを編集
-                          </button>
+                          {/* 編集・削除ボタン */}
+                          {deletingId === role.id ? (
+                            <div className="flex items-center gap-2 pt-1">
+                              <span className="text-xs text-muted-foreground flex-1">本当に削除しますか？</span>
+                              <button
+                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); deleteRole(role.id); }}
+                                className="px-3 py-2 rounded-xl bg-red-500 text-white text-xs font-medium"
+                              >
+                                削除
+                              </button>
+                              <button
+                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setDeletingId(null); }}
+                                className="px-3 py-2 rounded-xl border border-border text-xs text-muted-foreground"
+                              >
+                                キャンセル
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex gap-2">
+                              <button
+                                onClick={(e) => startEdit(role, e)}
+                                className="flex-1 py-2 rounded-xl border border-border text-xs text-muted-foreground flex items-center justify-center gap-1.5 hover:bg-mist transition-colors"
+                              >
+                                <Pencil className="w-3 h-3" />
+                                タイトル・Dreamを編集
+                              </button>
+                              <button
+                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setDeletingId(role.id); }}
+                                className="py-2 px-3 rounded-xl border border-border text-red-400 flex items-center justify-center hover:bg-red-50 transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )}
                         </motion.div>
                       )}
                     </AnimatePresence>
