@@ -2,8 +2,8 @@
 export const dynamic = "force-dynamic";
 
 import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { format, differenceInDays, isPast, isToday } from "date-fns";
+import { motion } from "framer-motion";
+import { format, differenceInDays } from "date-fns";
 import { ja } from "date-fns/locale";
 import { ChevronLeft, Check, Calendar, Target, Loader2 } from "lucide-react";
 import { useRouter, useParams } from "next/navigation";
