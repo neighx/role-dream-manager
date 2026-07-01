@@ -84,7 +84,8 @@ type UnifiedTask = {
   quadrant: number | null;
   estimated_minutes: number | null;
   role_id: string | null;
-  source: "task" | "project_task";
+  source: "task" | "project_task" | "goal_task";
+  goal_title?: string;
 };
 
 // ─── ペットメッセージ ──────────────────────────────────────────
@@ -140,6 +141,7 @@ function TodoItem({ task, role, displayMode, onToggle, onDelete }: TodoItemProps
         <div className="flex-1 min-w-0">
           <p className={`text-sm leading-snug ${isDone ? "line-through text-muted-foreground/60" : "text-charcoal font-medium"}`}>
             {task.source === "project_task" && <span className="mr-1 text-[11px]">🎯</span>}
+            {task.source === "goal_task" && <span className="mr-1 text-[11px]">🏆</span>}
             {task.title}
           </p>
           {!isDone && (
@@ -153,7 +155,12 @@ function TodoItem({ task, role, displayMode, onToggle, onDelete }: TodoItemProps
                   {isSimple ? EASY_ROLE_LABELS[role.category] || role.title : role.title}
                 </span>
               )}
-              {!isSimple && role?.gap && (
+              {task.source === "goal_task" && task.goal_title && (
+                <span className="text-[10px] text-amber-600 font-medium bg-amber-50 px-1.5 py-0.5 rounded-full">
+                  🏆 {task.goal_title}
+                </span>
+              )}
+              {!isSimple && role?.gap && task.source !== "goal_task" && (
                 <span className="text-[10px] text-muted-foreground/70 truncate max-w-[200px]">
                   Gap: {role.gap.length > 28 ? role.gap.slice(0, 28) + "…" : role.gap}
                 </span>
@@ -203,6 +210,7 @@ export default function HomePage() {
   const [expandedRoleId, setExpandedRoleId] = useState<string | null>(null);
   const [displayMode, setDisplayMode] = useState<DisplayMode>("simple");
   const [goals, setGoals] = useState<(Goal & { taskCount: number; completedCount: number })[]>([]);
+  const [todayGoalTasks, setTodayGoalTasks] = useState<Array<{ id: string; title: string; is_completed: boolean; goal_title: string }>>([]);
 
 
   const today = new Date();
@@ -220,7 +228,7 @@ export default function HomePage() {
       const weekStartStr = format(weekStart, "yyyy-MM-dd");
       const weekEndStr = format(addDays(weekStart, 6), "yyyy-MM-dd");
 
-      const [{ data: p }, { data: r }, { data: c }, { data: s }, { data: t }, { count: ic }, { data: pt }] = await Promise.all([
+      const [{ data: p }, { data: r }, { data: c }, { data: s }, { data: t }, { count: ic }, { data: pt }, { data: gtRaw }] = await Promise.all([
         supabase.from("users_profile").select("name,selected_pet,life_vision,display_mode").eq("user_id", user.id).single(),
         supabase.from("roles").select("id,title,category,dream,gap,monthly_goal,vision_photo_url,values,progress").eq("user_id", user.id).order("display_order").limit(6),
         supabase.from("daily_checkins").select("*").eq("user_id", user.id).eq("date", todayStr).maybeSingle(),
@@ -231,6 +239,7 @@ export default function HomePage() {
         supabase.from("tasks").select("*").eq("user_id", user.id).eq("due_date", todayStr).order("quadrant").limit(30),
         supabase.from("inbox_items").select("*", { count: "exact", head: true }).eq("user_id", user.id).eq("status", "open"),
         supabase.from("project_tasks").select("*").eq("user_id", user.id).eq("due_date", todayStr).neq("status", "skipped").order("quadrant"),
+        supabase.from("goal_tasks").select("*, goals(title)").eq("user_id", user.id).eq("due_date", todayStr).eq("is_completed", false),
       ]);
 
       setProfile(p as unknown as UserProfile);
@@ -243,6 +252,8 @@ export default function HomePage() {
       setTodayTasks(t || []);
       setTodayProjectTasks((pt || []) as ProjectTask[]);
       setInboxCount(ic ?? 0);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setTodayGoalTasks((gtRaw || []).map((t: any) => ({ id: t.id, title: t.title, is_completed: t.is_completed, goal_title: t.goals?.title || "ゴール" })));
 
       const { data: lg } = await supabase.from("daily_logs")
         .select("*").eq("user_id", user.id).eq("date", todayStr).maybeSingle();
@@ -275,6 +286,7 @@ export default function HomePage() {
   const allUndone: UnifiedTask[] = [
     ...todayTasks.filter(t => t.status !== "done").map(t => ({ id: t.id, title: t.title, status: t.status, quadrant: t.quadrant ?? null, estimated_minutes: t.estimated_minutes ?? null, role_id: t.role_id ?? null, source: "task" as const })),
     ...todayProjectTasks.filter(t => t.status !== "done").map(t => ({ id: t.id, title: t.title, status: t.status, quadrant: t.quadrant ?? null, estimated_minutes: t.estimated_minutes ?? null, role_id: t.role_id ?? null, source: "project_task" as const })),
+    ...todayGoalTasks.map(t => ({ id: t.id, title: t.title, status: "todo", quadrant: 1 as number | null, estimated_minutes: null, role_id: null, source: "goal_task" as const, goal_title: t.goal_title })),
   ].sort((a, b) => (a.quadrant ?? 4) - (b.quadrant ?? 4));
 
   const allDone: UnifiedTask[] = [
@@ -317,7 +329,19 @@ export default function HomePage() {
 
   // ─── アクション ────────────────────────────────────────────────
 
-  async function toggleDone(taskId: string, source: "task" | "project_task") {
+  async function toggleDone(taskId: string, source: "task" | "project_task" | "goal_task") {
+    if (source === "goal_task") {
+      const task = todayGoalTasks.find(t => t.id === taskId);
+      if (!task) return;
+      const newCompleted = !task.is_completed;
+      await supabase.from("goal_tasks").update({ is_completed: newCompleted }).eq("id", taskId);
+      if (newCompleted) {
+        setTodayGoalTasks(prev => prev.filter(t => t.id !== taskId));
+      } else {
+        setTodayGoalTasks(prev => prev.map(t => t.id === taskId ? { ...t, is_completed: newCompleted } : t));
+      }
+      return;
+    }
     if (source === "task") {
       const task = todayTasks.find(t => t.id === taskId);
       if (!task) return;
@@ -333,7 +357,8 @@ export default function HomePage() {
     }
   }
 
-  async function deleteItem(taskId: string, source: "task" | "project_task") {
+  async function deleteItem(taskId: string, source: "task" | "project_task" | "goal_task") {
+    if (source === "goal_task") return; // ゴールタスクはゴール詳細から管理
     if (source === "task") {
       await supabase.from("tasks").delete().eq("id", taskId);
       setTodayTasks(prev => prev.filter(t => t.id !== taskId));
