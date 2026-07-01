@@ -17,7 +17,7 @@ import { ScheduleEditModal } from "@/components/calendar/ScheduleEditModal";
 import { CalendarEventChip } from "@/components/calendar/CalendarEventChip";
 import {
   CalendarViewMode, CalendarEvent, Schedule, Task, ProjectTask, DailyLog, MoodType,
-  Role, UserProfile, PetType, ROLE_CATEGORY_COLORS, GoalTask, Goal,
+  Role, UserProfile, PetType, ROLE_CATEGORY_COLORS, GoalTask,
 } from "@/types";
 import { navigateDate, getViewLabel, getEventsForDay } from "@/lib/calendar/calendarUtils";
 
@@ -130,7 +130,7 @@ function CalendarContent() {
       sourceData: item,
     }));
 
-    const goalDateEvents: CalendarEvent[] = (goalEvts || []).map((g: Goal) => ({
+    const goalDateEvents: CalendarEvent[] = (goalEvts || []).map((g: { id: string; title: string; event_date: string; role_id: string | null }) => ({
       id: `goal-${g.id}`,
       type: "goal_task" as const,
       title: `🎯 ${g.title}`,
