@@ -5,7 +5,7 @@ import { isAIConfigured } from "@/lib/ai/aiClient";
 import { generateTodayPlanWithAI } from "@/lib/ai/generateTodayPlanWithAI";
 import { TODAY_PLAN_PROMPT_VERSION } from "@/lib/ai/prompts/todayPlanPrompt";
 import { ruleBasedTodayPlan } from "@/lib/plans/ruleBasedTodayPlan";
-import { TodayPlanResult, RegenerationMode, Role, Task, Schedule, DailyLog } from "@/types";
+import { TodayPlanResult, RegenerationMode, Role, Task, Schedule, DailyLog, Goal } from "@/types";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +49,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       { data: recentTasks },
       { data: weekSchedules },
       { data: recentLogs },
+      { data: upcomingGoalsRaw },
     ] = await Promise.all([
       supabase.from("users_profile").select("*").eq("user_id", user.id).single(),
       supabase.from("daily_checkins").select("*")
@@ -63,6 +64,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       supabase.from("daily_logs").select(
         "date, mood_after, one_line_diary, exercise_minutes, english_minutes, creator_minutes, work_minutes, study_minutes, roles_grown, sleep_hours, weather"
       ).eq("user_id", user.id).gte("date", sevenDaysAgo).order("date", { ascending: false }),
+      supabase.from("goals").select("id,title,event_date,time_horizon,category").eq("user_id", user.id).eq("is_completed", false).order("event_date", { ascending: true }).limit(5),
     ]);
 
     if (!checkin) {
@@ -97,6 +99,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           weekSchedules: (weekSchedules ?? []) as Schedule[],
           recentDailyLogs: (recentLogs ?? []) as DailyLog[],
           regenerationMode,
+          upcomingGoals: (upcomingGoalsRaw ?? []) as Pick<Goal, "id"|"title"|"event_date"|"time_horizon"|"category">[],
         });
       } catch (aiError) {
         console.error("[AI] generation failed, falling back to rules:", aiError);
