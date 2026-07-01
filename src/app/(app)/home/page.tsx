@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { format, startOfWeek, addDays, isSameDay, isToday } from "date-fns";
 import { ja } from "date-fns/locale";
-import { ArrowRight, Plus, Sparkles, Moon, Sun, Inbox, X, Trash2, ChevronDown, Target, ChevronRight } from "lucide-react";
+import { ArrowRight, Plus, Sparkles, Moon, Sun, Inbox, X, Trash2, ChevronDown, Target, ChevronRight, AlertCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   UserProfile, Role, DailyCheckin, Task, Schedule, ProjectTask, DailyLog, MoodType,
@@ -210,7 +210,11 @@ export default function HomePage() {
   const [expandedRoleId, setExpandedRoleId] = useState<string | null>(null);
   const [displayMode, setDisplayMode] = useState<DisplayMode>("simple");
   const [goals, setGoals] = useState<(Goal & { taskCount: number; completedCount: number })[]>([]);
-  const [todayGoalTasks, setTodayGoalTasks] = useState<Array<{ id: string; title: string; is_completed: boolean; goal_title: string }>>([]);
+  const [aiPhase, setAiPhase] = useState<"idle" | "selecting" | "generating" | "done">("idle");
+  const [planSelectedRoleIds, setPlanSelectedRoleIds] = useState<string[]>([]);
+  const [aiPlanError, setAiPlanError] = useState<string | null>(null);
+  const [showAllTasks, setShowAllTasks] = useState(false);
+  const [todayGoalTasks, setTodayGoalTasks] = useState<Array<{ id: string; title: string; is_completed: boolean; goal_title: string; role_id: string | null }>>([]);
 
 
   const today = new Date();
@@ -239,7 +243,7 @@ export default function HomePage() {
         supabase.from("tasks").select("*").eq("user_id", user.id).eq("due_date", todayStr).order("quadrant").limit(30),
         supabase.from("inbox_items").select("*", { count: "exact", head: true }).eq("user_id", user.id).eq("status", "open"),
         supabase.from("project_tasks").select("*").eq("user_id", user.id).eq("due_date", todayStr).neq("status", "skipped").order("quadrant"),
-        supabase.from("goal_tasks").select("*, goals(title)").eq("user_id", user.id).eq("due_date", todayStr).eq("is_completed", false),
+        supabase.from("goal_tasks").select("*, goals(title, role_id)").eq("user_id", user.id).eq("due_date", todayStr).eq("is_completed", false),
       ]);
 
       setProfile(p as unknown as UserProfile);
@@ -253,7 +257,7 @@ export default function HomePage() {
       setTodayProjectTasks((pt || []) as ProjectTask[]);
       setInboxCount(ic ?? 0);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      setTodayGoalTasks((gtRaw || []).map((t: any) => ({ id: t.id, title: t.title, is_completed: t.is_completed, goal_title: t.goals?.title || "ゴール" })));
+      setTodayGoalTasks((gtRaw || []).map((t: any) => ({ id: t.id, title: t.title, is_completed: t.is_completed, goal_title: t.goals?.title || "ゴール", role_id: t.goals?.role_id || null })));
 
       const { data: lg } = await supabase.from("daily_logs")
         .select("*").eq("user_id", user.id).eq("date", todayStr).maybeSingle();
@@ -294,7 +298,7 @@ export default function HomePage() {
     ...todayProjectTasks.filter(t => t.status === "done").map(t => ({ id: t.id, title: t.title, status: t.status, quadrant: t.quadrant ?? null, estimated_minutes: t.estimated_minutes ?? null, role_id: t.role_id ?? null, source: "project_task" as const })),
   ];
 
-  const top3 = allUndone.slice(0, 3);
+  const top3 = showAllTasks ? allUndone : allUndone.slice(0, 3);
 
   const roleWeekCount: Record<string, number> = {};
   weekSchedules.forEach(s => {
@@ -329,6 +333,20 @@ export default function HomePage() {
 
   // ─── アクション ────────────────────────────────────────────────
 
+  async function recalculateRoleProgress(roleId: string) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data: gs } = await supabase.from("goals").select("goal_tasks(is_completed)").eq("role_id", roleId).eq("user_id", user.id);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const allTasks = (gs || []).flatMap((g: any) => g.goal_tasks || []);
+    const total = allTasks.length;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const completed = allTasks.filter((t: any) => t.is_completed).length;
+    const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
+    await supabase.from("roles").update({ progress }).eq("id", roleId);
+    setRoles(prev => prev.map(r => r.id === roleId ? { ...r, progress } : r));
+  }
+
   async function toggleDone(taskId: string, source: "task" | "project_task" | "goal_task") {
     if (source === "goal_task") {
       const task = todayGoalTasks.find(t => t.id === taskId);
@@ -340,6 +358,7 @@ export default function HomePage() {
       } else {
         setTodayGoalTasks(prev => prev.map(t => t.id === taskId ? { ...t, is_completed: newCompleted } : t));
       }
+      if (task.role_id) recalculateRoleProgress(task.role_id);
       return;
     }
     if (source === "task") {
@@ -369,6 +388,50 @@ export default function HomePage() {
   }
 
 
+
+  async function generatePlan() {
+    if (!checkin || planSelectedRoleIds.length === 0) return;
+    setAiPhase("generating");
+    setAiPlanError(null);
+    try {
+      const res = await fetch("/api/ai/generate-today-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ selectedRoleIds: planSelectedRoleIds, todayStr }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setAiPlanError((err as { error?: string }).error ?? "プランの生成に失敗しました");
+        setAiPhase("idle");
+        return;
+      }
+      const result = await res.json() as { tasks: Array<{ role_id: string; title: string; long_term_connection?: string; estimated_minutes?: number; quadrant: number }>; };
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from("tasks").delete().eq("user_id", user.id).eq("due_date", todayStr);
+        const tasksToSave = result.tasks.filter(t => t.quadrant !== 4).map(t => ({
+          user_id: user.id,
+          role_id: t.role_id,
+          title: t.title,
+          purpose: t.long_term_connection || null,
+          due_date: todayStr,
+          estimated_minutes: t.estimated_minutes || null,
+          quadrant: t.quadrant,
+          status: "todo" as const,
+        }));
+        if (tasksToSave.length > 0) {
+          const { data: inserted } = await supabase.from("tasks").insert(tasksToSave).select();
+          setTodayTasks((inserted || []) as Task[]);
+        } else {
+          setTodayTasks([]);
+        }
+      }
+      setAiPhase("done");
+    } catch {
+      setAiPlanError("プランの生成に失敗しました");
+      setAiPhase("idle");
+    }
+  }
 
   async function addTask() {
     if (!newTitle.trim()) return;
@@ -477,11 +540,97 @@ export default function HomePage() {
             <button onClick={() => setShowAddForm(v => !v)} className="flex items-center gap-0.5 text-[11px] text-sage">
               <Plus className="w-3.5 h-3.5" />追加
             </button>
-            <Link href="/today" className="flex items-center gap-1 text-[11px] text-muted-foreground">
-              <Sparkles className="w-3 h-3" />プランを作る
-            </Link>
+            <button
+              onClick={() => setAiPhase(p => p === "selecting" ? "idle" : "selecting")}
+              className="flex items-center gap-1 text-[11px] text-sage font-medium"
+            >
+              <Sparkles className="w-3 h-3" />{aiPhase === "done" ? "再生成" : "AIプラン"}
+            </button>
           </div>
         </div>
+
+
+        {/* AI Plan Generation Section */}
+        <AnimatePresence>
+          {(aiPhase === "selecting" || aiPhase === "generating") && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="overflow-hidden mb-3"
+            >
+              {aiPlanError && (
+                <div className="mb-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 flex items-center gap-2">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                  <p className="text-[11px] text-amber-700 flex-1">{aiPlanError}</p>
+                  <button onClick={() => setAiPlanError(null)} className="text-amber-400 text-xs">✕</button>
+                </div>
+              )}
+              <div className="bg-white rounded-2xl p-4 shadow-sm">
+                {!checkin ? (
+                  <Link href="/checkin" className="text-sm text-sage text-center block">チェックインが必要です →</Link>
+                ) : (
+                  <>
+                    <p className="text-xs text-muted-foreground mb-3">集中するRoleを選んでください（最大3つ）</p>
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {roles.map(role => {
+                        const isSelected = planSelectedRoleIds.includes(role.id);
+                        const isDisabled = !isSelected && planSelectedRoleIds.length >= 3;
+                        const colors = ROLE_CATEGORY_COLORS[role.category];
+                        return (
+                          <button
+                            key={role.id}
+                            onClick={() => {
+                              if (isSelected) setPlanSelectedRoleIds(ids => ids.filter(id => id !== role.id));
+                              else if (!isDisabled) setPlanSelectedRoleIds(ids => [...ids, role.id]);
+                            }}
+                            disabled={isDisabled || aiPhase === "generating"}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl text-xs border-2 transition-all disabled:opacity-40"
+                            style={isSelected
+                              ? { backgroundColor: colors.bg, borderColor: colors.border, color: colors.text, fontWeight: 500 }
+                              : { borderColor: "transparent", backgroundColor: "#F0EEE9", color: "#888" }}
+                          >
+                            <span>{ROLE_EMOJI[role.category]}</span>
+                            <span>{role.title}</span>
+                            {isSelected && <span>✓</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <button
+                      onClick={generatePlan}
+                      disabled={planSelectedRoleIds.length === 0 || aiPhase === "generating"}
+                      className="w-full py-3 rounded-2xl bg-sage text-white text-sm font-medium disabled:opacity-40 flex items-center justify-center gap-2"
+                    >
+                      {aiPhase === "generating"
+                        ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />AIがプランを生成中...</>
+                        : <><Sparkles className="w-4 h-4" />AIで今日のプランを作る</>
+                      }
+                    </button>
+                  </>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Plan saved banner */}
+        <AnimatePresence>
+          {aiPhase === "done" && (
+            <motion.div
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="mb-3 bg-sage/10 border border-sage/20 rounded-2xl px-4 py-2.5 flex items-center justify-between"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-sage text-sm">✓</span>
+                <span className="text-sm text-sage font-medium">プランを保存しました</span>
+              </div>
+              <button onClick={() => setAiPhase("idle")} className="text-sage/60 text-xs">✕</button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* 手動追加フォーム */}
         <AnimatePresence>
@@ -514,7 +663,7 @@ export default function HomePage() {
         </AnimatePresence>
 
         {top3.length === 0 && allDone.length === 0 ? (
-          <Link href={checkin ? "/today" : "/checkin"}>
+          <button onClick={() => { if (!checkin) { window.location.href = "/checkin"; } else { setAiPhase(p => p === "selecting" ? "idle" : "selecting"); } }} className="w-full">
             <div className="bg-white rounded-3xl p-6 text-center shadow-sm active:scale-[0.98] transition-transform">
               <p className="text-3xl mb-2">📋</p>
               <p className="text-sm font-medium text-charcoal">まだ今日のTODOがありません</p>
@@ -522,10 +671,10 @@ export default function HomePage() {
                 {checkin ? "AIで今日のプランを作って保存しよう" : "まずチェックインして気分を教えよう"}
               </p>
               <span className="text-[11px] text-sage">
-                {checkin ? "プランを生成する →" : "チェックインする →"}
+                {checkin ? "AIプランを作る →" : "チェックインする →"}
               </span>
             </div>
-          </Link>
+          </button>
         ) : (
           <div className="bg-white rounded-2xl overflow-hidden shadow-sm">
             {top3.map(task => (
@@ -541,9 +690,9 @@ export default function HomePage() {
 
             {allUndone.length > 3 && (
               <div className="px-4 py-2.5 border-t border-mist">
-                <Link href="/today" className="text-[11px] text-sage flex items-center gap-1">
+                <button onClick={() => setShowAllTasks(true)} className="text-[11px] text-sage flex items-center gap-1">
                   他{allUndone.length - 3}件のTODOを見る <ArrowRight className="w-3 h-3" />
-                </Link>
+                </button>
               </div>
             )}
 
@@ -694,10 +843,12 @@ export default function HomePage() {
                       className="flex-1 py-2.5 text-center text-[11px] text-sage border-r border-mist">
                       詳細を見る
                     </Link>
-                    <Link href="/today"
-                      className="flex-1 py-2.5 text-center text-[11px] text-muted-foreground">
-                      今日の行動を計画
-                    </Link>
+                    <button
+                      onClick={() => { setAiPhase(p => p === "selecting" ? "idle" : "selecting"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                      className="flex-1 py-2.5 text-center text-[11px] text-muted-foreground"
+                    >
+                      AIプランを作る
+                    </button>
                   </div>
                 </div>
               );
