@@ -53,6 +53,7 @@ export function ProjectForm({ onSubmit, onCancel, isLoading }: Props) {
 
   return (
     <div className="space-y-4">
+      <p className="text-xs text-muted-foreground bg-mist/60 rounded-xl px-3 py-2">継続する取り組み（制作、ブランド構築、スキル強化）</p>
       <div>
         <label className="text-xs text-muted-foreground mb-1 block">プロジェクト名 *</label>
         <input
