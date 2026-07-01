@@ -34,6 +34,7 @@ interface RawAIParsed {
   suggested_duration_minutes?: number | null;
   confidence?: string;
   save_destination?: string;
+  generated_content?: string;
   reasoning?: string;
 }
 
@@ -44,7 +45,7 @@ export async function parseQuickCaptureWithAI(
   const provider = getAIProvider();
   const messages = buildQuickCaptureMessages({ rawText, roles, today: new Date() });
 
-  const result = await provider.generate({ messages, maxTokens: 700 });
+  const result = await provider.generate({ messages, maxTokens: 1000 });
 
   let raw: RawAIParsed;
   try {
@@ -74,6 +75,7 @@ export async function parseQuickCaptureWithAI(
     confidence: (raw.confidence as ParsedQuickCapture["confidence"]) ?? "medium",
     save_destination:
       (raw.save_destination as ParsedQuickCapture["save_destination"]) ?? "inbox",
+    generated_content: raw.generated_content,
     reasoning: raw.reasoning,
     ai_generated: true,
     ai_model: result.model ?? provider.defaultModel,
