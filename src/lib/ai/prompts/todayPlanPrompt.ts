@@ -212,6 +212,20 @@ function buildUserPrompt(input: TodayPlanPromptInput): string {
     });
   }
 
+
+  // ─── 直近のゴール ──────────────────────────────────────────────
+  if (upcomingGoals && upcomingGoals.length > 0) {
+    const horizonLabel = (h: string) =>
+      h === "3year" ? "3年ゴール" : h === "1year" ? "1年ゴール" :
+      h === "3month" ? "3ヶ月ゴール" : h === "monthly" ? "今月ゴール" : "イベント";
+    lines.push(``);
+    lines.push(`## 直近のゴール（今日のアクションに反映）`);
+    upcomingGoals.forEach((g) => {
+      const daysLeft = Math.ceil((new Date(g.event_date + "T00:00:00").getTime() - date.getTime()) / 86400000);
+      lines.push(`- 「${g.title}」: あと${daysLeft}日（${horizonLabel(g.time_horizon)}）`);
+    });
+  }
+
   // ─── 生成指示 ─────────────────────────────────────────────
   lines.push(``);
   lines.push(`## 生成指示`);
