@@ -8,7 +8,7 @@ import { ja } from "date-fns/locale";
 import { ChevronLeft, Check, Calendar, Target, Loader2 } from "lucide-react";
 import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Goal, GoalTask, GoalCategory, GOAL_CATEGORY_CONFIG } from "@/types";
+import { Goal, GoalTask, GoalCategory, GOAL_CATEGORY_CONFIG, GOAL_TIME_HORIZON_CONFIG, GoalTimeHorizon, Role, ROLE_CATEGORY_COLORS } from "@/types";
 
 export default function GoalDetailPage() {
   const supabase = createClient();
@@ -17,6 +17,7 @@ export default function GoalDetailPage() {
   const goalId = params.id as string;
 
   const [goal, setGoal] = useState<Goal | null>(null);
+  const [role, setRole] = useState<Role | null>(null);
   const [tasks, setTasks] = useState<GoalTask[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
