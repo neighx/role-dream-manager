@@ -3,9 +3,8 @@ export const dynamic = "force-dynamic";
 
 import { useState, useEffect, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, Plus, Target } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 import { createClient } from "@/lib/supabase/client";
@@ -19,7 +18,6 @@ import { CalendarEventChip } from "@/components/calendar/CalendarEventChip";
 import {
   CalendarViewMode, CalendarEvent, Schedule, Task, ProjectTask, DailyLog, MoodType,
   Role, UserProfile, PetType, ROLE_CATEGORY_COLORS, GoalTask,
-  Goal, GOAL_CATEGORY_CONFIG, GoalCategory,
 } from "@/types";
 import { navigateDate, getViewLabel, getEventsForDay } from "@/lib/calendar/calendarUtils";
 
@@ -40,12 +38,9 @@ function CalendarContent() {
   const [modalDefaultDate, setModalDefaultDate] = useState<Date>(new Date());
   const [linkedTask, setLinkedTask] = useState<{ id: string; title: string } | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
-  const [goals, setGoals] = useState<(Goal & { taskCount: number; completedCount: number })[]>([]);
 
   useEffect(() => {
     loadData();
-    loadGoals();
-
     // TODOからカレンダー追加のクエリパラメータ
     const taskId = searchParams.get("addTask");
     if (taskId) {
@@ -53,24 +48,6 @@ function CalendarContent() {
     }
   }, []);
 
-  async function loadGoals() {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    const { data: gs } = await supabase
-      .from("goals")
-      .select("*, goal_tasks(id, is_completed)")
-      .eq("user_id", user.id)
-      .eq("is_completed", false)
-      .order("event_date", { ascending: true })
-      .limit(5);
-    setGoals(
-      (gs || []).map((g: any) => ({
-        ...g,
-        taskCount: (g.goal_tasks || []).length,
-        completedCount: (g.goal_tasks || []).filter((t: any) => t.is_completed).length,
-      }))
-    );
-  }
 
   async function loadData() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -371,58 +348,6 @@ function CalendarContent() {
         onSaved={() => { loadData(); setSelectedEvent(null); }}
         onDeleted={() => { loadData(); setSelectedEvent(null); }}
       />
-
-      {/* 🎯 ゴール */}
-      <div className="space-y-2.5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <Target className="w-4 h-4 text-sage" />
-            <p className="text-sm font-medium text-charcoal">ゴール</p>
-          </div>
-          <Link href="/goals" className="text-xs text-sage font-medium flex items-center gap-1">
-            <Plus className="w-3.5 h-3.5" />
-            追加・一覧
-          </Link>
-        </div>
-
-        {goals.length === 0 ? (
-          <Link href="/goals">
-            <div className="bg-white rounded-2xl px-4 py-3 shadow-sm flex items-center gap-3">
-              <span className="text-xl">🎯</span>
-              <p className="text-sm text-muted-foreground flex-1">ゴールを追加して逆算タスクを作ろう</p>
-              <ChevronRight className="w-4 h-4 text-muted-foreground/50" />
-            </div>
-          </Link>
-        ) : (
-          <div className="space-y-2">
-            {goals.map((g) => {
-              const config = GOAL_CATEGORY_CONFIG[g.category as GoalCategory] ?? GOAL_CATEGORY_CONFIG.other;
-              const progress = g.taskCount > 0 ? Math.round((g.completedCount / g.taskCount) * 100) : 0;
-              const eventDate = new Date(g.event_date + "T00:00:00");
-              const daysLeft = Math.ceil((eventDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
-              return (
-                <Link key={g.id} href={`/goals/${g.id}`}>
-                  <div className="bg-white rounded-2xl px-4 py-3 shadow-sm flex items-center gap-3 active:scale-[0.98] transition-transform">
-                    <span className="text-lg shrink-0">{config.emoji}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-charcoal truncate">{g.title}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <div className="flex-1 h-1 rounded-full bg-mist overflow-hidden">
-                          <div className="h-full rounded-full bg-sage" style={{ width: `${progress}%` }} />
-                        </div>
-                        <span className={`text-[10px] font-medium shrink-0 ${daysLeft <= 7 ? "text-red-500" : "text-muted-foreground"}`}>
-                          あと{daysLeft}日
-                        </span>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-muted-foreground/50 shrink-0" />
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        )}
-      </div>
 
       <div className="h-4" />
     </div>
