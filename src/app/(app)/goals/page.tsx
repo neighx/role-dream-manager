@@ -258,10 +258,12 @@ export default function GoalsPage() {
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 28, stiffness: 280 }}
-              className="bg-ivory w-full max-w-md rounded-t-3xl p-5 pb-safe pb-10 space-y-5 overflow-y-auto max-h-[85vh]"
+              className="bg-ivory w-full max-w-md rounded-t-3xl flex flex-col"
+              style={{ maxHeight: "88dvh" }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between">
+              {/* Header — fixed, not scrolled */}
+              <div className="flex items-center justify-between px-5 pt-5 pb-3 shrink-0">
                 <div>
                   <p className="text-base font-medium text-charcoal">ゴールを登録する</p>
                   <p className="text-[11px] text-muted-foreground">特定の日に起きるイベント（ライブ、リリース、発表）</p>
@@ -270,6 +272,8 @@ export default function GoalsPage() {
                   <X className="w-5 h-5 text-muted-foreground" />
                 </button>
               </div>
+              {/* Scrollable content */}
+              <div className="flex-1 overflow-y-auto px-5 pb-10 space-y-4">
 
               {/* 時間軸選択 */}
               <div>
@@ -369,6 +373,7 @@ export default function GoalsPage() {
                   "登録してタスクを生成"
                 )}
               </motion.button>
+              </div>{/* end scrollable */}
             </motion.div>
           </motion.div>
         )}
