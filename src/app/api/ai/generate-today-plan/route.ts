@@ -71,7 +71,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const effectiveCheckin = checkin ?? {
       id: "none",
       user_id: user.id,
-      mood: "okay" as const,
+      mood: "normal" as const,
       energy: 70 as EnergyLevel,
       stress_cause: "time" as StressCause,
       mode: "maintain" as DayMode,
