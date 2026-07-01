@@ -88,7 +88,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (isAIConfigured()) {
       try {
         result = await generateTodayPlanWithAI({
-          date: today,
+          date: new Date(todayStr + "T00:00:00"),
           profile,
           checkin,
           selectedRoles,
