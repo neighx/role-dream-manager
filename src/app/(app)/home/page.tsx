@@ -217,6 +217,10 @@ export default function HomePage() {
   const [dreamChainRoleIdx, setDreamChainRoleIdx] = useState(0);
   const [todayGoalTasks, setTodayGoalTasks] = useState<Array<{ id: string; title: string; is_completed: boolean; goal_title: string; role_id: string | null }>>([]);
   const [dataLoaded, setDataLoaded] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [newRoleId, setNewRoleId] = useState<string>("");
+  const [weeklyGoalInput, setWeeklyGoalInput] = useState<string>("");
+  const [isSavingWeekly, setIsSavingWeekly] = useState(false);
 
 
   const today = new Date();
@@ -236,7 +240,7 @@ export default function HomePage() {
 
       const [{ data: p }, { data: r }, { data: c }, { data: s }, { data: t }, { count: ic }, { data: pt }, { data: gtRaw }] = await Promise.all([
         supabase.from("users_profile").select("name,selected_pet,life_vision,display_mode").eq("user_id", user.id).single(),
-        supabase.from("roles").select("id,title,category,dream,gap,monthly_goal,vision_photo_url,values,progress").eq("user_id", user.id).order("display_order").limit(6),
+        supabase.from("roles").select("id,title,category,dream,gap,monthly_goal,weekly_goal,vision_photo_url,values,progress").eq("user_id", user.id).order("display_order").limit(6),
         supabase.from("daily_checkins").select("*").eq("user_id", user.id).eq("date", todayStr).maybeSingle(),
         supabase.from("schedules").select("id,title,start_time,role_id,is_all_day")
           .eq("user_id", user.id)
@@ -329,6 +333,8 @@ export default function HomePage() {
   const weekChartMax = Math.max(...weekDayTotals.map((d) => d.total), 60);
   const weekTotalMinutes = weekDayTotals.reduce((sum, d) => sum + d.total, 0);
 
+  const isMonday = new Date().getDay() === 1;
+
   // ─── 夢チェーン derived ─────────────────────────────────────────
   const primaryRole = roles[Math.min(dreamChainRoleIdx, Math.max(roles.length - 1, 0))] ?? null;
   const HORIZON_ORDER = ["3year", "1year", "3month", "monthly", "event"];
@@ -381,6 +387,10 @@ export default function HomePage() {
         setTodayGoalTasks(prev => prev.map(t => t.id === taskId ? { ...t, is_completed: newCompleted } : t));
       }
       if (task.role_id) recalculateRoleProgress(task.role_id);
+      if (newCompleted) {
+        setToast(`✨ タスクを完了！`);
+        setTimeout(() => setToast(null), 2500);
+      }
       return;
     }
     if (source === "task") {
@@ -412,7 +422,7 @@ export default function HomePage() {
 
 
   async function generatePlan() {
-    if (!checkin || planSelectedRoleIds.length === 0) return;
+    if (planSelectedRoleIds.length === 0) return;
     setAiPhase("generating");
     setAiPlanError(null);
     try {
@@ -455,6 +465,15 @@ export default function HomePage() {
     }
   }
 
+  async function saveWeeklyGoal() {
+    if (!primaryRole || !weeklyGoalInput.trim()) return;
+    setIsSavingWeekly(true);
+    await supabase.from("roles").update({ weekly_goal: weeklyGoalInput.trim() }).eq("id", primaryRole.id);
+    setRoles(prev => prev.map(r => r.id === primaryRole.id ? { ...r, weekly_goal: weeklyGoalInput.trim() } : r));
+    setWeeklyGoalInput("");
+    setIsSavingWeekly(false);
+  }
+
   async function addTask() {
     if (!newTitle.trim()) return;
     setIsAdding(true);
@@ -466,10 +485,12 @@ export default function HomePage() {
       quadrant: newQuadrant,
       due_date: todayStr,
       status: "todo",
+      role_id: newRoleId || null,
     }).select().single();
     if (inserted) setTodayTasks(prev => [...prev, inserted as Task]);
     setNewTitle("");
     setNewQuadrant(1);
+    setNewRoleId("");
     setShowAddForm(false);
     setIsAdding(false);
   }
@@ -571,6 +592,33 @@ export default function HomePage() {
         )}
       </AnimatePresence>
 
+      {/* 月曜バナー：今週のゴールを設定 */}
+      {isMonday && primaryRole && !primaryRole.weekly_goal && (
+        <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.09 }}>
+          <div className="bg-white rounded-2xl p-4 shadow-sm border-l-4 border-sage">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-base">🎯</span>
+              <p className="text-sm font-medium text-charcoal">今週のゴールを決めよう</p>
+            </div>
+            <p className="text-[11px] text-muted-foreground mb-3">月曜日に週の目標を設定すると達成率が上がります</p>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={weeklyGoalInput}
+                onChange={e => setWeeklyGoalInput(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && saveWeeklyGoal()}
+                placeholder={`${primaryRole.title} の今週のゴール…`}
+                className="flex-1 px-3 py-2 text-sm rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-sage/30"
+              />
+              <button onClick={saveWeeklyGoal} disabled={!weeklyGoalInput.trim() || isSavingWeekly}
+                className="px-4 py-2 rounded-xl bg-sage text-white text-sm font-medium disabled:opacity-40">
+                保存
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       {/* ③ 今日のTODO TOP 3 */}
       <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
         <div className="flex items-center justify-between mb-3">
@@ -608,48 +656,42 @@ export default function HomePage() {
                 </div>
               )}
               <div className="bg-white rounded-2xl p-4 shadow-sm">
-                {!checkin ? (
-                  <Link href="/checkin" className="text-sm text-sage text-center block">チェックインが必要です →</Link>
-                ) : (
-                  <>
-                    <p className="text-xs text-muted-foreground mb-3">集中するRoleを選んでください（最大3つ）</p>
-                    <div className="flex flex-wrap gap-2 mb-3">
-                      {roles.map(role => {
-                        const isSelected = planSelectedRoleIds.includes(role.id);
-                        const isDisabled = !isSelected && planSelectedRoleIds.length >= 3;
-                        const colors = ROLE_CATEGORY_COLORS[role.category];
-                        return (
-                          <button
-                            key={role.id}
-                            onClick={() => {
-                              if (isSelected) setPlanSelectedRoleIds(ids => ids.filter(id => id !== role.id));
-                              else if (!isDisabled) setPlanSelectedRoleIds(ids => [...ids, role.id]);
-                            }}
-                            disabled={isDisabled || aiPhase === "generating"}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl text-xs border-2 transition-all disabled:opacity-40"
-                            style={isSelected
-                              ? { backgroundColor: colors.bg, borderColor: colors.border, color: colors.text, fontWeight: 500 }
-                              : { borderColor: "transparent", backgroundColor: "#F0EEE9", color: "#888" }}
-                          >
-                            <span>{ROLE_EMOJI[role.category]}</span>
-                            <span>{role.title}</span>
-                            {isSelected && <span>✓</span>}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <button
-                      onClick={generatePlan}
-                      disabled={planSelectedRoleIds.length === 0 || aiPhase === "generating"}
-                      className="w-full py-3 rounded-2xl bg-sage text-white text-sm font-medium disabled:opacity-40 flex items-center justify-center gap-2"
-                    >
-                      {aiPhase === "generating"
-                        ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />AIがプランを生成中...</>
-                        : <><Sparkles className="w-4 h-4" />AIで今日のプランを作る</>
-                      }
-                    </button>
-                  </>
-                )}
+                <p className="text-xs text-muted-foreground mb-3">集中するRoleを選んでください（最大3つ）</p>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {roles.map(role => {
+                    const isSelected = planSelectedRoleIds.includes(role.id);
+                    const isDisabled = !isSelected && planSelectedRoleIds.length >= 3;
+                    const colors = ROLE_CATEGORY_COLORS[role.category];
+                    return (
+                      <button
+                        key={role.id}
+                        onClick={() => {
+                          if (isSelected) setPlanSelectedRoleIds(ids => ids.filter(id => id !== role.id));
+                          else if (!isDisabled) setPlanSelectedRoleIds(ids => [...ids, role.id]);
+                        }}
+                        disabled={isDisabled || aiPhase === "generating"}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl text-xs border-2 transition-all disabled:opacity-40"
+                        style={isSelected
+                          ? { backgroundColor: colors.bg, borderColor: colors.border, color: colors.text, fontWeight: 500 }
+                          : { borderColor: "transparent", backgroundColor: "#F0EEE9", color: "#888" }}
+                      >
+                        <span>{ROLE_EMOJI[role.category]}</span>
+                        <span>{role.title}</span>
+                        {isSelected && <span>✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  onClick={generatePlan}
+                  disabled={planSelectedRoleIds.length === 0 || aiPhase === "generating"}
+                  className="w-full py-3 rounded-2xl bg-sage text-white text-sm font-medium disabled:opacity-40 flex items-center justify-center gap-2"
+                >
+                  {aiPhase === "generating"
+                    ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />AIがプランを生成中...</>
+                    : <><Sparkles className="w-4 h-4" />AIで今日のプランを作る</>
+                  }
+                </button>
               </div>
             </motion.div>
           )}
@@ -681,6 +723,27 @@ export default function HomePage() {
                 <input type="text" value={newTitle} onChange={e => setNewTitle(e.target.value)}
                   onKeyDown={e => e.key === "Enter" && addTask()} placeholder="タスクを入力…" autoFocus
                   className="w-full px-3 py-2.5 text-sm rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-sage/30" />
+                {roles.length > 0 && (
+                  <div className="flex gap-1.5 flex-wrap items-center">
+                    <span className="text-[10px] text-muted-foreground shrink-0">Role:</span>
+                    <button onClick={() => setNewRoleId("")}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] transition-all ${newRoleId === "" ? "bg-mist text-charcoal font-medium" : "text-muted-foreground"}`}>
+                      なし
+                    </button>
+                    {roles.map(r => {
+                      const colors = ROLE_CATEGORY_COLORS[r.category];
+                      return (
+                        <button key={r.id} onClick={() => setNewRoleId(r.id)}
+                          className="px-2.5 py-1 rounded-lg text-[10px] transition-all"
+                          style={newRoleId === r.id
+                            ? { backgroundColor: colors.bg, color: colors.text, fontWeight: 500 }
+                            : { color: "#aaa" }}>
+                          {ROLE_EMOJI[r.category]} {r.title}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
                 <div className="flex gap-2">
                   {([{ q: 1, label: "重要・緊急", color: "#F5CCC8" }, { q: 2, label: "重要", color: "#C8DBC6" }, { q: 3, label: "緊急", color: "#BDD5EA" }] as const).map(({ q, label, color }) => (
                     <button key={q} onClick={() => setNewQuadrant(q)}
@@ -704,16 +767,12 @@ export default function HomePage() {
         </AnimatePresence>
 
         {top3.length === 0 && allDone.length === 0 ? (
-          <button onClick={() => { if (!checkin) { window.location.href = "/checkin"; } else { setAiPhase(p => p === "selecting" ? "idle" : "selecting"); } }} className="w-full">
+          <button onClick={() => setAiPhase(p => p === "selecting" ? "idle" : "selecting")} className="w-full">
             <div className="bg-white rounded-3xl p-6 text-center shadow-sm active:scale-[0.98] transition-transform">
               <p className="text-3xl mb-2">📋</p>
               <p className="text-sm font-medium text-charcoal">まだ今日のTODOがありません</p>
-              <p className="text-[11px] text-muted-foreground mt-1 mb-3">
-                {checkin ? "AIで今日のプランを作って保存しよう" : "まずチェックインして気分を教えよう"}
-              </p>
-              <span className="text-[11px] text-sage">
-                {checkin ? "AIプランを作る →" : "チェックインする →"}
-              </span>
+              <p className="text-[11px] text-muted-foreground mt-1 mb-3">AIで今日のプランを作って保存しよう</p>
+              <span className="text-[11px] text-sage">AIプランを作る →</span>
             </div>
           </button>
         ) : (
@@ -1203,6 +1262,19 @@ export default function HomePage() {
 
     </div>
 
+    {/* Toast notification */}
+    <AnimatePresence>
+      {toast && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 20 }}
+          className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-charcoal text-ivory text-sm font-medium px-5 py-3 rounded-2xl shadow-lg whitespace-nowrap"
+        >
+          {toast}
+        </motion.div>
+      )}
+    </AnimatePresence>
 
     </>
   );
