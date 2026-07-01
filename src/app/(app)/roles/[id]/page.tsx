@@ -5,7 +5,7 @@ import { useState, useEffect, use } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, Calendar, Users, MessageSquare, ImagePlus, Sparkles, Check, RefreshCw, Trash2, Plus } from "lucide-react";
+import { ChevronLeft, Calendar, Users, MessageSquare, ImagePlus, Sparkles, Check, RefreshCw, Trash2, Plus, Pencil } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Role, Task, ROLE_CATEGORY_COLORS, Project, Goal, GOAL_TIME_HORIZON_CONFIG, GoalTimeHorizon } from "@/types";
 import { DreamGapCard } from "@/components/roles/DreamGapCard";
@@ -316,16 +316,44 @@ export default function RoleDetailPage({ params }: { params: Promise<{ id: strin
         {/* 夢MAPタブ */}
         {activeTab === "dreammap" && (
           <div className="space-y-4">
-            {/* Dream */}
-            {role.dream && (
-              <div className="bg-white rounded-3xl p-5 shadow-sm">
-                <div className="flex items-center gap-2 mb-3">
+            {/* Dream — 常に表示、インライン編集可 */}
+            <div className="bg-white rounded-3xl p-5 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
                   <span className="text-xl">⭐</span>
                   <p className="text-sm font-medium text-charcoal">Dream（究極の夢）</p>
                 </div>
-                <p className="text-sm text-charcoal leading-relaxed">{role.dream}</p>
+                <button
+                  onClick={() => editingField === "dream" ? saveField("dream", editValue) : startEdit("dream")}
+                  className="flex items-center gap-1 text-xs text-sage font-medium"
+                >
+                  {editingField === "dream" ? (
+                    <><Check className="w-3.5 h-3.5" />保存</>
+                  ) : (
+                    <><Pencil className="w-3.5 h-3.5" />編集</>
+                  )}
+                </button>
               </div>
-            )}
+              {editingField === "dream" ? (
+                <textarea
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  autoFocus
+                  placeholder="5年後・10年後、究極の夢を書こう…"
+                  rows={3}
+                  className="w-full text-sm text-charcoal bg-mist/60 rounded-xl px-3 py-2.5 focus:outline-none resize-none"
+                />
+              ) : role.dream ? (
+                <p className="text-sm text-charcoal leading-relaxed">{role.dream}</p>
+              ) : (
+                <button
+                  onClick={() => startEdit("dream")}
+                  className="w-full text-left text-sm text-muted-foreground bg-mist/40 rounded-xl px-3 py-3 leading-relaxed"
+                >
+                  ✍️ &nbsp;5年後の夢を書こう…
+                </button>
+              )}
+            </div>
 
             {/* 逆算カスケード */}
             <div className="space-y-0">
